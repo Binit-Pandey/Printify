@@ -1,0 +1,2 @@
+- [Vite + verbatimModuleSyntax type imports](vite-verbatim-module-syntax.md) — interfaces/types imported without `import type` crash at runtime with "does not provide an export" when tsconfig has verbatimModuleSyntax: true.
+- [Tailwind v4 setup](tailwind-v4-setup.md) — postcss plugin package changed and CSS needs an explicit `@import "tailwindcss";` entry point.
