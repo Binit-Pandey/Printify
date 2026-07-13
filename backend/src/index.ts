@@ -8,6 +8,7 @@ import vendorsRouter from './routes/vendors';
 import expensesRouter from './routes/expenses';
 import billsRouter from './routes/bills';
 import settingsRouter from './routes/settings';
+import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 const PORT = 3001;
@@ -23,6 +24,9 @@ app.use('/api/bills', billsRouter);
 app.use('/api/settings', settingsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Must be registered AFTER all routes
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on http://localhost:${PORT}`);
