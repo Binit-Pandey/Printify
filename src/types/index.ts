@@ -37,6 +37,16 @@ export interface Vendor {
   outstandingBalance: number;
 }
 
+export interface VendorPayment {
+  id: string;
+  vendorId: string;
+  amount: number;
+  date: string;
+  type: 'purchase' | 'payment';
+  description: string;
+  dueDate?: string;
+}
+
 export interface Expense {
   id: string;
   category: string;
@@ -62,9 +72,13 @@ export interface Bill {
   items: BillItem[];
   subtotal: number;
   discount: number;
+  discountType: 'percentage' | 'fixed';
   vat: number;
   grandTotal: number;
   status: 'Paid' | 'Pending';
+  paymentMethod: 'Cash' | 'Card' | 'Online' | 'Credit';
+  notes: string;
+  createdBy: string;
 }
 
 export interface CompanySettings {

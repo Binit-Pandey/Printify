@@ -1,4 +1,4 @@
-import type { Customer, InventoryItem, Vendor, Expense, Bill, CompanySettings } from '../types';
+import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings } from '../types';
 
 const BASE = '/api';
 
@@ -23,6 +23,9 @@ const del  =    (path: string)                   => request<void>(path, { method
 export const api = {
   customers: {
     list:   ()               => get<Customer[]>('/customers'),
+    listWithDue: ()          => get<Customer[]>('/customers/with-due'),
+    findOrCreate: (data: { name: string; phone: string; address?: string; email?: string }) =>
+                    post<Customer>('/customers/find-or-create', data),
     create: (c: Customer)    => post<Customer>('/customers', c),
     update: (c: Customer)    => put<Customer>(`/customers/${c.id}`, c),
     remove: (id: string)     => del(`/customers/${id}`),
@@ -40,6 +43,13 @@ export const api = {
     create: (v: Vendor)     => post<Vendor>('/vendors', v),
     update: (v: Vendor)     => put<Vendor>(`/vendors/${v.id}`, v),
     remove: (id: string)    => del(`/vendors/${id}`),
+  },
+
+  vendorPayments: {
+    list:   (vendorId: string) => get<VendorPayment[]>(`/vendor-payments/${vendorId}`),
+    listAll: ()                  => get<VendorPayment[]>('/vendor-payments/all'),
+    create: (p: VendorPayment) => post<VendorPayment>('/vendor-payments', p),
+    remove: (id: string)       => del(`/vendor-payments/${id}`),
   },
 
   expenses: {
@@ -64,5 +74,7 @@ export const api = {
       return settings as CompanySettings;
     },
     update: (s: CompanySettings) => put<CompanySettings>('/settings', s),
+    exportData: () => get<any>('/settings/export'),
+    importData: (data: any) => post<any>('/settings/import', data),
   },
 };

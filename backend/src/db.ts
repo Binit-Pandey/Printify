@@ -61,6 +61,17 @@ db.exec(`
     status     TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS vendor_payments (
+    id          TEXT PRIMARY KEY,
+    vendorId    TEXT NOT NULL,
+    amount      REAL NOT NULL,
+    date        TEXT NOT NULL,
+    type        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    dueDate     TEXT,
+    FOREIGN KEY (vendorId) REFERENCES vendors(id)
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     id            INTEGER PRIMARY KEY CHECK (id = 1),
     name          TEXT,
@@ -74,39 +85,59 @@ db.exec(`
   );
 `);
 
+// ── Migration: add new bill columns if missing ──────────────────────────────
+function migrateBillsTable() {
+  const cols = db.prepare('PRAGMA table_info(bills)').all() as Array<{ name: string }>;
+  const colNames = cols.map(c => c.name);
+
+  if (!colNames.includes('paymentMethod')) {
+    db.exec("ALTER TABLE bills ADD COLUMN paymentMethod TEXT NOT NULL DEFAULT 'Cash'");
+  }
+  if (!colNames.includes('notes')) {
+    db.exec("ALTER TABLE bills ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  }
+  if (!colNames.includes('createdBy')) {
+    db.exec("ALTER TABLE bills ADD COLUMN createdBy TEXT NOT NULL DEFAULT 'Admin'");
+  }
+  if (!colNames.includes('discountType')) {
+    db.exec("ALTER TABLE bills ADD COLUMN discountType TEXT NOT NULL DEFAULT 'percentage'");
+  }
+}
+
+migrateBillsTable();
+
 // ── Migration: drop outstandingBalance from customers if it still exists ─────
 function migrateCustomersTable() {
   const cols = db.prepare('PRAGMA table_info(customers)').all() as Array<{ name: string }>;
   const hasBalance = cols.some((c) => c.name === 'outstandingBalance');
   if (!hasBalance) return;
 
-  db.exec(`
-    CREATE TABLE customers_v2 (
-      id      TEXT PRIMARY KEY,
-      name    TEXT NOT NULL,
-      phone   TEXT NOT NULL,
-      address TEXT NOT NULL,
-      email   TEXT
-    );
-    INSERT INTO customers_v2 (id, name, phone, address, email)
-      SELECT id, name, phone, address, email FROM customers;
-    DROP TABLE customers;
-    ALTER TABLE customers_v2 RENAME TO customers;
-  `);
+  const migrate = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE customers_v2 (
+        id      TEXT PRIMARY KEY,
+        name    TEXT NOT NULL,
+        phone   TEXT NOT NULL,
+        address TEXT NOT NULL,
+        email   TEXT
+      );
+      INSERT INTO customers_v2 (id, name, phone, address, email)
+        SELECT id, name, phone, address, email FROM customers;
+      DROP TABLE customers;
+      ALTER TABLE customers_v2 RENAME TO customers;
+    `);
+  });
+  migrate();
   console.log('✅ Migration: removed outstandingBalance from customers table');
 }
 
 migrateCustomersTable();
 
-// ── Seed data (only if tables are empty) ─────────────────────────────────────
+// ── Seed data (only if tables are empty — customers are never seeded) ────────
 function seedIfEmpty() {
-  const n = (db.prepare('SELECT COUNT(*) as n FROM customers').get() as { n: number }).n;
+  const n = (db.prepare('SELECT COUNT(*) as n FROM settings').get() as { n: number }).n;
   if (n > 0) return;
 
-  const insertCustomer = db.prepare(`
-    INSERT INTO customers (id, name, phone, address, email)
-    VALUES (@id, @name, @phone, @address, @email)
-  `);
   const insertInventory = db.prepare(`
     INSERT INTO inventory (id, name, category, unit, quantity, purchasePrice, vendor, status)
     VALUES (@id, @name, @category, @unit, @quantity, @purchasePrice, @vendor, @status)
@@ -120,21 +151,15 @@ function seedIfEmpty() {
     VALUES (@id, @category, @amount, @reason, @date, @addedBy)
   `);
   const insertBill = db.prepare(`
-    INSERT INTO bills (id, billNumber, date, customer, items, subtotal, discount, vat, grandTotal, status)
-    VALUES (@id, @billNumber, @date, @customer, @items, @subtotal, @discount, @vat, @grandTotal, @status)
+    INSERT INTO bills (id, billNumber, date, customer, items, subtotal, discount, discountType, vat, grandTotal, status, paymentMethod, notes, createdBy)
+    VALUES (@id, @billNumber, @date, @customer, @items, @subtotal, @discount, @discountType, @vat, @grandTotal, @status, @paymentMethod, @notes, @createdBy)
   `);
   const insertSettings = db.prepare(`
     INSERT INTO settings (id, name, panNumber, vatNumber, address, contactNumber, email, logo, vatRate)
     VALUES (1, @name, @panNumber, @vatNumber, @address, @contactNumber, @email, @logo, @vatRate)
   `);
 
-  const c1 = { id: 'c1', name: 'Rahul Sharma',  phone: '9841234567', address: 'Kathmandu, Nepal', email: 'rahul@email.com' };
-  const c2 = { id: 'c2', name: 'Priya Patel',   phone: '9861234567', address: 'Pokhara, Nepal',   email: 'priya@email.com' };
-
   const seedAll = db.transaction(() => {
-    insertCustomer.run(c1);
-    insertCustomer.run(c2);
-
     insertInventory.run({ id: 'i1', name: 'A4 Paper',  category: 'Paper', unit: 'Ream',  quantity: 45, purchasePrice: 450,  vendor: 'Paper Mart',    status: 'In Stock'  });
     insertInventory.run({ id: 'i2', name: 'Black Ink', category: 'Ink',   unit: 'Liter', quantity: 8,  purchasePrice: 1200, vendor: 'Ink Suppliers', status: 'Low Stock' });
 
@@ -142,27 +167,20 @@ function seedIfEmpty() {
 
     insertExpense.run({ id: 'e1', category: 'Rent', amount: 25000, reason: 'Monthly office rent', date: '2026-07-01', addedBy: 'Admin' });
 
-    // Paid bill — does NOT contribute to outstanding balance
+    // Seed demo bills (customer JSON is embedded — no FK to customers table)
     insertBill.run({
-      id: 'b1', billNumber: 'BILL-0001', date: '2026-07-05',
-      customer: JSON.stringify(c1),
+      id: 'b1', billNumber: 'INV-260705-00001', date: '2026-07-05',
+      customer: JSON.stringify({ id: 'c_demo1', name: 'Rahul Sharma', phone: '9841234567', address: 'Kathmandu, Nepal', email: 'rahul@email.com', outstandingBalance: 0 }),
       items: JSON.stringify([{ id: 'bi1', name: 'Visiting Cards', quantity: 1000, unitPrice: 2.5, discount: 0 }]),
-      subtotal: 2500, discount: 0, vat: 325, grandTotal: 2825, status: 'Paid',
+      subtotal: 2500, discount: 0, discountType: 'percentage', vat: 325, grandTotal: 2825, status: 'Paid',
+      paymentMethod: 'Cash', notes: '', createdBy: 'Admin',
     });
-
-    // Pending bills — these drive outstandingBalance for each customer
     insertBill.run({
-      id: 'b2', billNumber: 'BILL-0002', date: '2026-07-10',
-      customer: JSON.stringify(c1),
+      id: 'b2', billNumber: 'INV-260710-00002', date: '2026-07-10',
+      customer: JSON.stringify({ id: 'c_demo2', name: 'Priya Patel', phone: '9861234567', address: 'Pokhara, Nepal', email: 'priya@email.com', outstandingBalance: 0 }),
       items: JSON.stringify([{ id: 'bi2', name: 'Letterheads', quantity: 500, unitPrice: 8, discount: 5 }]),
-      subtotal: 4000, discount: 200, vat: 494, grandTotal: 4294, status: 'Pending',
-    });
-
-    insertBill.run({
-      id: 'b3', billNumber: 'BILL-0003', date: '2026-07-11',
-      customer: JSON.stringify(c2),
-      items: JSON.stringify([{ id: 'bi3', name: 'Brochures', quantity: 200, unitPrice: 15, discount: 0 }]),
-      subtotal: 3000, discount: 0, vat: 390, grandTotal: 3390, status: 'Pending',
+      subtotal: 4000, discount: 200, discountType: 'fixed', vat: 494, grandTotal: 4294, status: 'Pending',
+      paymentMethod: 'Credit', notes: 'Delivery within 3 days', createdBy: 'Admin',
     });
 
     insertSettings.run({ name: 'Shree Printing Press', panNumber: 'PAN987654', vatNumber: 'VAT123456', address: 'New Road, Kathmandu, Nepal', contactNumber: '01-4567890', email: 'info@shreeprint.com', logo: '/logo.png', vatRate: 13 });

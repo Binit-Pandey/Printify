@@ -99,9 +99,13 @@ export const mockBills: Bill[] = [
     ],
     subtotal: 2500,
     discount: 0,
+    discountType: 'percentage',
     vat: 325,
     grandTotal: 2825,
     status: 'Paid',
+    paymentMethod: 'Cash',
+    notes: '',
+    createdBy: 'Admin',
   },
 ];
 
