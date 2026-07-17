@@ -10,6 +10,11 @@ const Settings = () => {
   const { settings, updateSettings, initialize } = useStore();
   const { dark, toggle: toggleTheme } = useTheme();
   const [formData, setFormData] = useState(settings);
+
+  // Keep formData in sync when the store's settings are updated (e.g. after data import)
+  useEffect(() => {
+    setFormData(settings);
+  }, [settings]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState('');

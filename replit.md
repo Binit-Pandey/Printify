@@ -1,57 +1,70 @@
 # PrintPress ERP
 
-## Overview
-A full-stack printing press management ERP. Covers dashboard analytics, billing, customers, inventory, vendors, expenses, and settings for a print shop, with role-based views (superadmin, admin, staff).
+Billing, inventory, vendor, and expense management system for commercial printing press businesses.
 
-## Tech Stack
+## How to run
 
-### Frontend
-- React 19 + TypeScript + Vite 8
-- react-router-dom v7 for routing
-- Tailwind CSS v4 for styling
-- Zustand 5 for state management (no localStorage — data comes from API)
-- recharts for dashboard charts
-- react-hook-form + zod for forms
-- lucide-react for icons, framer-motion for animations
+Two workflows are configured and must both be running:
 
-### Backend
-- Node.js + Express (TypeScript via tsx)
-- better-sqlite3 for persistent SQLite storage
-- Database file: `data/printing.db` (auto-created on first run, auto-seeded)
-- Runs on port 3001
+| Workflow | Command | Port |
+|----------|---------|------|
+| Start backend | `cd backend && npm run dev` | 3001 |
+| Start application | `npm run dev` | 5000 |
 
-## Project Architecture
-- `src/main.tsx` — app entry, wraps app in `BrowserRouter` and `AuthContext`
-- `src/App.tsx` — route definitions; calls `store.initialize()` on mount to load all data from API
-- `src/contexts/AuthContext.tsx` — client-side auth (demo users, hardcoded password)
-- `src/contexts/store.ts` — Zustand store; all actions call `src/services/api.ts` then update local state
-- `src/services/api.ts` — typed fetch wrappers for all REST endpoints (`/api/...`)
-- `src/layouts/DashboardLayout.tsx` — authenticated shell (Sidebar + Navbar + `<Outlet />`)
-- `src/pages/` — 10 feature pages (Login, Dashboard, Billing, Customers, Inventory, Vendors, Expenses, Bills, Reports, Settings)
-- `src/types/` — shared TypeScript interfaces
-- `backend/src/index.ts` — Express app, mounts all routers under `/api`
-- `backend/src/db.ts` — SQLite schema creation and first-run seed
-- `backend/src/routes/` — CRUD routers: customers, inventory, vendors, expenses, bills, settings
+The frontend (port 5000) proxies all `/api/*` requests to the backend (port 3001) automatically via Vite config.
 
-## API Routes
-All routes prefixed `/api/`:
-- `GET/POST /customers`, `PUT/DELETE /customers/:id`
-- `GET/POST /inventory`, `PUT/DELETE /inventory/:id`
-- `GET/POST /vendors`, `PUT/DELETE /vendors/:id`
-- `GET/POST /expenses`, `PUT/DELETE /expenses/:id`
-- `GET/POST /bills`, `PUT/DELETE /bills/:id`
-- `GET /settings`, `PUT /settings`
+## Default login credentials
 
-Vite proxies `/api` → `http://localhost:3001` in development.
+| Username | Password | Role |
+|----------|----------|------|
+| superadmin | admin123 | Super Admin |
+| admin | admin123 | Admin |
+| staff | admin123 | Staff (limited view) |
 
-## Demo Credentials
-- Username: `superadmin`, `admin`, or `staff`
-- Password: `admin123` (same for all roles)
+## Tech stack
 
-## Development
-Two workflows run in parallel:
-- **Start backend** — `cd backend && npm run dev` (port 3001, console output)
-- **Start application** — `npm run dev` (port 5000, webview)
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4 + Zustand + Recharts + jsPDF
+- **Backend**: Express 4 + TypeScript + better-sqlite3 (SQLite)
+- **Database**: SQLite — auto-created at `data/printing.db` on first run; no external DB needed
+- **Build tools**: tsx (backend hot-reload), oxlint
 
-## User Preferences
-None recorded yet.
+## Project structure
+
+```
+├── src/                  # Frontend (React + Vite)
+│   ├── pages/            # Billing, Bills, Customers, Dashboard, Expenses, Inventory, Reports, Settings, Vendors
+│   ├── components/       # Sidebar, Navbar, InvoicePreview, ConfirmModal, Toast
+│   ├── contexts/         # AuthContext, ThemeContext, store (Zustand)
+│   ├── services/api.ts   # Axios API client (calls /api/*)
+│   └── utils/            # PDF generator, number-to-words, validation schemas
+├── backend/src/
+│   ├── index.ts          # Express app entry point
+│   ├── db.ts             # SQLite schema, migrations, seed data
+│   └── routes/           # bills, customers, expenses, inventory, settings, vendors, vendorPayments
+├── data/printing.db      # SQLite database file
+└── vite.config.ts        # Dev server on port 5000, proxies /api → :3001
+```
+
+## Features
+
+- **Billing** — Create invoices with line items, discounts, VAT; live preview; PDF download; print
+- **Bills** — View/manage all invoices; toggle Paid/Pending; duplicate bills
+- **Customers** — Track customers with outstanding (credit) balances
+- **Inventory** — Stock management with vendor assignment and due/paid purchase tracking
+- **Vendors** — Supplier management, payment recording, aging due report (PDF)
+- **Expenses** — Categorized expense tracking with monthly filtering
+- **Reports** — Revenue, expense, profit charts; CSV export; date range filtering
+- **Settings** — Company info, VAT rate, data export/import (JSON backup/restore)
+- **Dark/Light mode** — Toggle via navbar
+- **Role-based access** — Superadmin, Admin, Staff roles
+
+## Notes
+
+- Auth is frontend-only (mock users in `src/mock-data/index.ts`); all backend routes are open
+- SQLite is embedded — no database server needed
+- Bills paid via Cash/Card/Online are auto-marked **Paid**; Credit bills are **Pending** (tracked per customer)
+- `better-sqlite3` requires Python + gcc to compile; these are installed as Nix system packages
+
+## User preferences
+
+- Keep the existing project structure and stack unchanged

@@ -9,7 +9,7 @@ import Toast from '../components/Toast';
 import { api } from '../services/api';
 
 const Vendors = () => {
-  const { vendors, addVendor, updateVendor, deleteVendor, addVendorPayment } = useStore();
+  const { vendors, settings, addVendor, updateVendor, deleteVendor, addVendorPayment } = useStore();
   const { searchQuery, setSearchQuery, filteredItems } = useFilter(vendors, ['name', 'phone', 'address', 'panNumber']);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
@@ -204,7 +204,7 @@ const Vendors = () => {
     pdf.setFontSize(9);
     pdf.setFont('helvetica', 'normal');
     pdf.text(`Generated: ${new Date().toLocaleDateString('en-NP', { year: 'numeric', month: 'long', day: 'numeric' })}`, 15, 21);
-    pdf.text('Shree Printing Press', pageWidth - 15, 14, { align: 'right' });
+    pdf.text(settings.name || 'Printing Press', pageWidth - 15, 14, { align: 'right' });
 
     y = 38;
 
@@ -574,7 +574,7 @@ const Vendors = () => {
                 <input
                   type="number"
                   min={0}
-                  max={payTarget.outstandingBalance}
+                  max={vendorStats[payTarget.id]?.dueAmount || 0}
                   value={payAmount || ''}
                   onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none text-lg font-bold"
