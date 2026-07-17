@@ -41,13 +41,13 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
     <motion.div 
       initial={false}
       animate={{ width: isOpen ? 280 : 80 }}
-      className="h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col overflow-hidden"
+      className="h-screen bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 border-r border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden shadow-lg transition-all"
     >
-      <div className="p-6 flex items-center gap-3 border-b border-gray-200 dark:border-gray-800">
-        <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+      <div className="p-6 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800">
+        <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-pink-500 rounded-lg flex items-center justify-center shadow-md">
           <span className="text-white font-bold text-xl">P</span>
         </div>
-        {isOpen && <div className="font-semibold text-xl">PrintPress</div>}
+        {isOpen && <div className="font-semibold text-lg tracking-tight">PrintPress</div>}
       </div>
 
       <nav className="flex-1 px-3 py-6 overflow-y-auto">
@@ -58,25 +58,25 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 px-4 py-3 rounded-2xl mb-1 transition-all ${isActive 
-                ? 'bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400' 
-                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'}`}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg mb-1 transition-all duration-200 ${isActive 
+                ? 'bg-blue-600 text-white shadow-md' 
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
             >
               <Icon className="w-5 h-5" />
-              {isOpen && <span>{item.label}</span>}
+              {isOpen && <span className="text-sm font-medium">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+      <div className="p-4 border-t border-slate-200 dark:border-slate-800">
         <button
           onClick={logout}
-          className="flex items-center gap-3 px-4 py-3 w-full text-red-500 hover:bg-red-50 dark:hover:bg-red-950 rounded-2xl"
+          className="flex items-center gap-3 px-4 py-3 w-full text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950 rounded-lg transition-all duration-200 font-medium"
           aria-label="Logout"
         >
           <User className="w-5 h-5" />
-          {isOpen && <span>Logout</span>}
+          {isOpen && <span className="text-sm">Logout</span>}
         </button>
       </div>
     </motion.div>

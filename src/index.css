@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+html {
+  @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50;
+}
+
 body {
   margin: 0;
 }

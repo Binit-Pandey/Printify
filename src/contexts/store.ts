@@ -55,15 +55,38 @@ export const useStore = create<AppState>()((set) => ({
   isInitialized: false,
 
   initialize: async () => {
-    const [customers, inventory, vendors, expenses, bills, settings] = await Promise.all([
-      api.customers.list(),
-      api.inventory.list(),
-      api.vendors.list(),
-      api.expenses.list(),
-      api.bills.list(),
-      api.settings.get(),
-    ]);
-    set({ customers, inventory, vendors, expenses, bills, settings, isInitialized: true });
+    try {
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Initialization timeout')), 5000)
+      );
+      
+      const loadDataPromise = Promise.all([
+        api.customers.list(),
+        api.inventory.list(),
+        api.vendors.list(),
+        api.expenses.list(),
+        api.bills.list(),
+        api.settings.get(),
+      ]);
+
+      const [customers, inventory, vendors, expenses, bills, settings] = await Promise.race([
+        loadDataPromise,
+        timeoutPromise,
+      ]) as any;
+      
+      set({ customers, inventory, vendors, expenses, bills, settings, isInitialized: true });
+    } catch (error) {
+      console.warn('Failed to load data, using defaults:', error);
+      set({ 
+        customers: [],
+        inventory: [],
+        vendors: [],
+        expenses: [],
+        bills: [],
+        settings: defaultSettings,
+        isInitialized: true 
+      });
+    }
   },
 
   // Customers
