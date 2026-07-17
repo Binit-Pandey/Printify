@@ -30,49 +30,49 @@ const Navbar = ({ toggleSidebar }: NavbarProps) => {
   };
 
   return (
-    <nav className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 flex items-center justify-between">
+    <nav className="h-16 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 border-b border-slate-200 dark:border-slate-800 px-6 flex items-center justify-between shadow-sm">
       <div className="flex items-center gap-4">
-        <button onClick={toggleSidebar} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl" aria-label="Toggle sidebar">
+        <button onClick={toggleSidebar} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all" aria-label="Toggle sidebar">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <div className="font-semibold text-lg text-gray-800 dark:text-white">Welcome back, {user?.name.split(' ')[0]}</div>
+        <div className="font-medium text-lg">Welcome back, <span className="text-blue-600 dark:text-blue-400">{user?.name.split(' ')[0]}</span></div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <button onClick={toggleDarkMode} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
+      <div className="flex items-center gap-2">
+        <button onClick={toggleDarkMode} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
           {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
         
-        <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl relative" aria-label="Notifications">
+        <button className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all relative" aria-label="Notifications">
           <Bell className="w-5 h-5" />
-          <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          <span className="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full"></span>
         </button>
 
         <div className="relative">
           <button 
             onClick={() => setShowProfileMenu(!showProfileMenu)}
-            className="flex items-center gap-2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl"
+            className="flex items-center gap-2 px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all ml-2"
           >
-            <div className="w-8 h-8 bg-gray-300 dark:bg-gray-700 rounded-full flex items-center justify-center text-sm font-medium">
-              {user?.name.charAt(0)}
+            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-pink-500 rounded-lg flex items-center justify-center text-sm font-medium text-white shadow-md">
+              {user?.name.charAt(0).toUpperCase()}
             </div>
             <div className="hidden md:block">
               <div className="text-sm font-medium">{user?.name}</div>
-              <div className="text-xs text-gray-500 capitalize">{user?.role}</div>
+              <div className="text-xs text-slate-600 dark:text-slate-400 capitalize">{user?.role}</div>
             </div>
           </button>
 
           {showProfileMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50">
-              <div className="px-4 py-2 border-b dark:border-gray-700">
+            <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 rounded-lg shadow-lg border border-slate-200 dark:border-slate-800 py-2 z-50">
+              <div className="px-4 py-2 border-b border-slate-200 dark:border-slate-800">
                 <div className="font-medium">{user?.name}</div>
-                <div className="text-sm text-gray-500">{user?.email}</div>
+                <div className="text-sm text-slate-600 dark:text-slate-400">{user?.email}</div>
               </div>
               <button 
                 onClick={logout}
-                className="w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="w-full text-left px-4 py-2 text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950 transition-all font-medium text-sm"
               >
                 Logout
               </button>
