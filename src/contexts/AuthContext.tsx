@@ -4,6 +4,7 @@ import type { User } from '../types';
 import { mockUsers } from '../mock-data';
 
 const DEMO_PASSWORD = 'admin123';
+const STORAGE_KEY = 'printpress_user';
 
 interface AuthContextType {
   user: User | null;
@@ -13,12 +14,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function loadUser(): User | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(loadUser);
 
   const login = (username: string, password: string): boolean => {
     const foundUser = mockUsers.find(u => u.username === username);
     if (foundUser && password === DEMO_PASSWORD) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(foundUser));
       setUser(foundUser);
       return true;
     }
@@ -26,6 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
+    localStorage.removeItem(STORAGE_KEY);
     setUser(null);
   };
 

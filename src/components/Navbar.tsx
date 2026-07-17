@@ -1,4 +1,5 @@
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { Bell, Sun, Moon } from 'lucide-react';
 import { useState } from 'react';
 
@@ -8,26 +9,8 @@ interface NavbarProps {
 
 const Navbar = ({ toggleSidebar }: NavbarProps) => {
   const { user, logout } = useAuth();
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('darkMode');
-      if (saved !== null) return saved === 'true';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return false;
-  });
+  const { dark, toggle: toggleTheme } = useTheme();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-
-  const toggleDarkMode = () => {
-    const next = !darkMode;
-    setDarkMode(next);
-    localStorage.setItem('darkMode', String(next));
-    if (next) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
 
   return (
     <nav className="h-16 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-50 border-b border-slate-200 dark:border-slate-800 px-6 flex items-center justify-between shadow-sm">
@@ -41,17 +24,17 @@ const Navbar = ({ toggleSidebar }: NavbarProps) => {
       </div>
 
       <div className="flex items-center gap-2">
-        <button onClick={toggleDarkMode} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
-          {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        <button onClick={toggleTheme} className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+          {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
-        
+
         <button className="p-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all relative" aria-label="Notifications">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-pink-500 rounded-full"></span>
         </button>
 
         <div className="relative">
-          <button 
+          <button
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center gap-2 px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all ml-2"
           >
@@ -70,7 +53,7 @@ const Navbar = ({ toggleSidebar }: NavbarProps) => {
                 <div className="font-medium">{user?.name}</div>
                 <div className="text-sm text-slate-600 dark:text-slate-400">{user?.email}</div>
               </div>
-              <button 
+              <button
                 onClick={logout}
                 className="w-full text-left px-4 py-2 text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-950 transition-all font-medium text-sm"
               >

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Customer, InventoryItem, Vendor, Expense, Bill, CompanySettings } from '../types';
+import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings } from '../types';
 import { api } from '../services/api';
 
 interface AppState {
@@ -13,6 +13,7 @@ interface AppState {
 
   initialize: () => Promise<void>;
 
+  findOrCreateCustomer: (data: { name: string; phone: string; address?: string; email?: string }) => Promise<Customer>;
   addCustomer: (customer: Customer) => Promise<void>;
   updateCustomer: (customer: Customer) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
@@ -24,6 +25,10 @@ interface AppState {
   addVendor: (vendor: Vendor) => Promise<void>;
   updateVendor: (vendor: Vendor) => Promise<void>;
   deleteVendor: (id: string) => Promise<void>;
+
+  addVendorPayment: (payment: VendorPayment) => Promise<void>;
+  deleteVendorPayment: (id: string, vendorId: string) => Promise<void>;
+  refreshVendor: (id: string) => Promise<void>;
 
   addExpense: (expense: Expense) => Promise<void>;
   updateExpense: (expense: Expense) => Promise<void>;
@@ -56,10 +61,10 @@ export const useStore = create<AppState>()((set) => ({
 
   initialize: async () => {
     try {
-      const timeoutPromise = new Promise((_, reject) => 
+      const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Initialization timeout')), 5000)
       );
-      
+
       const loadDataPromise = Promise.all([
         api.customers.list(),
         api.inventory.list(),
@@ -73,23 +78,34 @@ export const useStore = create<AppState>()((set) => ({
         loadDataPromise,
         timeoutPromise,
       ]) as any;
-      
+
       set({ customers, inventory, vendors, expenses, bills, settings, isInitialized: true });
     } catch (error) {
       console.warn('Failed to load data, using defaults:', error);
-      set({ 
+      set({
         customers: [],
         inventory: [],
         vendors: [],
         expenses: [],
         bills: [],
         settings: defaultSettings,
-        isInitialized: true 
+        isInitialized: true
       });
     }
   },
 
   // Customers
+  findOrCreateCustomer: async (data) => {
+    const customer = await api.customers.findOrCreate(data);
+    set((s) => {
+      const exists = s.customers.find((c) => c.id === customer.id);
+      if (exists) {
+        return { customers: s.customers.map((c) => (c.id === customer.id ? customer : c)) };
+      }
+      return { customers: [...s.customers, customer] };
+    });
+    return customer;
+  },
   addCustomer: async (customer) => {
     await api.customers.create(customer);
     set((s) => ({ customers: [...s.customers, customer] }));
@@ -129,6 +145,22 @@ export const useStore = create<AppState>()((set) => ({
   deleteVendor: async (id) => {
     await api.vendors.remove(id);
     set((s) => ({ vendors: s.vendors.filter((v) => v.id !== id) }));
+  },
+
+  addVendorPayment: async (payment) => {
+    await api.vendorPayments.create(payment);
+    // Refresh the vendor to get updated outstandingBalance
+    const vendors = await api.vendors.list();
+    set({ vendors });
+  },
+  deleteVendorPayment: async (id, vendorId) => {
+    await api.vendorPayments.remove(id);
+    const vendors = await api.vendors.list();
+    set({ vendors });
+  },
+  refreshVendor: async (id) => {
+    const vendors = await api.vendors.list();
+    set({ vendors });
   },
 
   // Expenses

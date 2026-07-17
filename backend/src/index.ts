@@ -2,12 +2,21 @@ import express from 'express';
 import cors from 'cors';
 import './db'; // initialises DB and seeds on first run
 
+// Safety net: prevent unhandled errors from crashing the process
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled rejection:', reason);
+});
+
 import customersRouter from './routes/customers';
 import inventoryRouter from './routes/inventory';
 import vendorsRouter from './routes/vendors';
 import expensesRouter from './routes/expenses';
 import billsRouter from './routes/bills';
 import settingsRouter from './routes/settings';
+import vendorPaymentsRouter from './routes/vendorPayments';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -22,6 +31,7 @@ app.use('/api/vendors', vendorsRouter);
 app.use('/api/expenses', expensesRouter);
 app.use('/api/bills', billsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/vendor-payments', vendorPaymentsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 

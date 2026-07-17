@@ -8,10 +8,10 @@ const DashboardLayout = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+      <div className="no-print"><Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} /></div>
       
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+        <div className="no-print"><Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} /></div>
         
         <main className="flex-1 overflow-auto p-8 bg-slate-50 dark:bg-slate-950">
           <Outlet />
