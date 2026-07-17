@@ -112,7 +112,8 @@ const Billing = () => {
       discountType,
       vat,
       grandTotal,
-      status: 'Pending',
+      // Credit payments are tracked as Pending; all other methods are considered Paid immediately
+      status: paymentMethod === 'Credit' ? 'Pending' : 'Paid',
       paymentMethod,
       notes,
       createdBy: user?.name || 'Admin',
