@@ -9,6 +9,18 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 // ── Schema ──────────────────────────────────────────────────────────────────
+// Users table for authentication
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    passwordHash TEXT NOT NULL,
+    displayName TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL
+  );
+`);
+
 // customers: identity only — outstandingBalance is computed from pending bills
 db.exec(`
   CREATE TABLE IF NOT EXISTS customers (
