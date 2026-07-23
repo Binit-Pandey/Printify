@@ -103,7 +103,8 @@ const Register = () => {
     const success = await register(email, password, displayName);
 
     if (success) {
-      navigate('/dashboard');
+      // Redirect to device verification page after successful registration
+      navigate('/verify-device');
     }
   };
 

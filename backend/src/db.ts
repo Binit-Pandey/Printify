@@ -16,8 +16,30 @@ db.exec(`
     email TEXT NOT NULL UNIQUE,
     passwordHash TEXT NOT NULL,
     displayName TEXT NOT NULL,
+    requiresDeviceVerification INTEGER DEFAULT 1,
+    lastVerifiedDeviceId TEXT,
     createdAt TEXT NOT NULL,
     updatedAt TEXT NOT NULL
+  );
+`);
+
+// Device Verifications table - tracks verified devices per user
+db.exec(`
+  CREATE TABLE IF NOT EXISTS device_verifications (
+    id TEXT PRIMARY KEY,
+    userId TEXT NOT NULL,
+    deviceId TEXT NOT NULL,
+    deviceName TEXT,
+    email TEXT NOT NULL,
+    verificationStatus TEXT NOT NULL,
+    verificationMethod TEXT,
+    verificationToken TEXT,
+    verificationTokenExpiry TEXT,
+    verifiedAt TEXT,
+    lastUsedAt TEXT,
+    createdAt TEXT NOT NULL,
+    updatedAt TEXT NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id)
   );
 `);
 
@@ -96,6 +118,21 @@ db.exec(`
     vatRate       REAL
   );
 `);
+
+// ── Migration: add device verification columns to users if missing ──────────
+function migrateUsersTable() {
+  const cols = db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+  const colNames = cols.map(c => c.name);
+
+  if (!colNames.includes('requiresDeviceVerification')) {
+    db.exec("ALTER TABLE users ADD COLUMN requiresDeviceVerification INTEGER DEFAULT 1");
+  }
+  if (!colNames.includes('lastVerifiedDeviceId')) {
+    db.exec("ALTER TABLE users ADD COLUMN lastVerifiedDeviceId TEXT");
+  }
+}
+
+migrateUsersTable();
 
 // ── Migration: add new bill columns if missing ──────────────────────────────
 function migrateBillsTable() {

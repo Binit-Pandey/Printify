@@ -4,6 +4,8 @@ import { useAuth } from './contexts/AuthContext';
 import { useStore } from './contexts/store';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import VerifyDevice from './pages/VerifyDevice';
+import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import Billing from './pages/Billing';
@@ -39,8 +41,22 @@ function App() {
       <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" />} />
       <Route path="/register" element={!user ? <Register /> : <Navigate to="/dashboard" />} />
       <Route
+        path="/verify-device"
+        element={
+          user ? <VerifyDevice /> : <Navigate to="/login" />
+        }
+      />
+      <Route
         path="/*"
-        element={user ? <DashboardLayout /> : <Navigate to="/login" />}
+        element={
+          user ? (
+            <ProtectedRoute requiresDeviceVerification={true}>
+              <DashboardLayout />
+            </ProtectedRoute>
+          ) : (
+            <Navigate to="/login" />
+          )
+        }
       >
         <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />

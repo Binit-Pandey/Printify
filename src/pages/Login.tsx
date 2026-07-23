@@ -16,7 +16,9 @@ const Login = () => {
 
     const success = await login(email, password);
     if (success) {
-      navigate('/dashboard');
+      // Redirect to device verification page after successful login
+      // The VerifyDevice page will then redirect to dashboard after verification
+      navigate('/verify-device');
     }
   };
 
