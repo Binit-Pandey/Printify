@@ -83,6 +83,38 @@ db.exec(`
     logo          TEXT,
     vatRate       REAL
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id                TEXT PRIMARY KEY,
+    email             TEXT UNIQUE NOT NULL,
+    passwordHash      TEXT NOT NULL,
+    firstName         TEXT,
+    lastName          TEXT,
+    isEmailVerified   BOOLEAN DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'pending',
+    createdAt         TEXT NOT NULL,
+    updatedAt         TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS emailVerificationTokens (
+    id        TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL,
+    token     TEXT NOT NULL UNIQUE,
+    tokenHash TEXT NOT NULL UNIQUE,
+    type      TEXT NOT NULL DEFAULT 'verification',
+    expiresAt TEXT NOT NULL,
+    usedAt    TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (userId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS loginAttempts (
+    id        TEXT PRIMARY KEY,
+    email     TEXT NOT NULL,
+    success   BOOLEAN NOT NULL,
+    timestamp TEXT NOT NULL,
+    ipAddress TEXT
+  );
 `);
 
 // ── Migration: add new bill columns if missing ──────────────────────────────

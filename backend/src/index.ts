@@ -10,6 +10,7 @@ process.on('unhandledRejection', (reason) => {
   console.error('[FATAL] Unhandled rejection:', reason);
 });
 
+import authRouter from './routes/auth';
 import customersRouter from './routes/customers';
 import inventoryRouter from './routes/inventory';
 import vendorsRouter from './routes/vendors';
@@ -25,6 +26,7 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json());
 
+app.use('/api/auth', authRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/inventory', inventoryRouter);
 app.use('/api/vendors', vendorsRouter);

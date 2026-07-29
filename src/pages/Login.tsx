@@ -1,24 +1,28 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 
 const Login = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    if (login(username, password)) {
+    setIsLoading(true);
+
+    const result = await login({ email, password });
+    if (result.success) {
       navigate('/dashboard');
     } else {
-      setError('Invalid username or password. Use demo credentials.');
+      setError(result.message);
     }
+    setIsLoading(false);
   };
 
   return (
@@ -36,14 +40,14 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="username" className="block text-sm font-semibold text-slate-900 dark:text-slate-50 mb-2">Username</label>
+            <label htmlFor="email" className="block text-sm font-semibold text-slate-900 dark:text-slate-50 mb-2">Email Address</label>
             <input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-50 placeholder-slate-500 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/50 focus:border-blue-600 transition-all"
-              placeholder="superadmin"
+              placeholder="you@example.com"
               required
             />
           </div>
@@ -60,18 +64,26 @@ const Login = () => {
             />
           </div>
 
-          {error && <p className="text-pink-600 dark:text-pink-400 text-sm font-medium">{error}</p>}
+          {error && (
+            <div className="bg-pink-50 dark:bg-pink-900/20 border border-pink-200 dark:border-pink-800 rounded-lg p-3">
+              <p className="text-pink-600 dark:text-pink-400 text-sm font-medium">{error}</p>
+            </div>
+          )}
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition-all duration-200 mt-6"
+            disabled={isLoading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition-all duration-200 mt-6"
           >
-            Sign In
+            {isLoading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 pt-6">
-          Demo credentials: <span className="text-blue-600 dark:text-blue-400 font-medium">superadmin</span>
+          Don&apos;t have an account?{' '}
+          <Link to="/register" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+            Create one
+          </Link>
         </div>
       </div>
     </div>
