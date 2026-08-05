@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import { useStore } from './contexts/store';
 import Login from './pages/Login';
+import AdminRegister from './pages/AdminRegister';
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/Dashboard';
 import Billing from './pages/Billing';
@@ -13,6 +14,7 @@ import Expenses from './pages/Expenses';
 import Bills from './pages/Bills';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import StaffManagement from './pages/StaffManagement';
 
 function App() {
   const { user } = useAuth();
@@ -36,6 +38,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={!user ? <Login /> : <Navigate to="/dashboard" />} />
+      <Route path="/register" element={!user ? <AdminRegister /> : <Navigate to="/dashboard" />} />
       <Route
         path="/*"
         element={user ? <DashboardLayout /> : <Navigate to="/login" />}
@@ -50,6 +53,7 @@ function App() {
         <Route path="bills" element={<Bills />} />
         <Route path="reports" element={<Reports />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="staff" element={<StaffManagement />} />
         <Route path="*" element={<div className="p-8 text-center"><h1 className="text-2xl font-bold">Page Not Found</h1></div>} />
       </Route>
     </Routes>

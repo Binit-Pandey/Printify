@@ -1,23 +1,32 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 
 const Login = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
     
-    if (login(username, password)) {
-      navigate('/dashboard');
-    } else {
-      setError('Invalid username or password. Use demo credentials.');
+    try {
+      const success = await login(username, password);
+      if (success) {
+        navigate('/dashboard');
+      } else {
+        setError('Invalid username or password. Use demo credentials.');
+      }
+    } catch {
+      setError('Login failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -36,7 +45,7 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label htmlFor="username" className="block text-sm font-semibold text-slate-900 dark:text-slate-50 mb-2">Username</label>
+            <label htmlFor="username" className="block text-sm font-semibold text-slate-900 dark:text-slate-50 mb-2">Username or Email</label>
             <input
               id="username"
               type="text"
@@ -64,14 +73,23 @@ const Login = () => {
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition-all duration-200 mt-6"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition-all duration-200 mt-6"
           >
-            Sign In
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800 pt-6">
-          Demo credentials: <span className="text-blue-600 dark:text-blue-400 font-medium">superadmin</span>
+        <div className="mt-6 text-center border-t border-slate-200 dark:border-slate-800 pt-6 space-y-3">
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            New here?{' '}
+            <Link to="/register" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">
+              Register as Admin
+            </Link>
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-500">
+            Demo credentials: <span className="text-blue-600 dark:text-blue-400 font-medium">superadmin</span>
+          </p>
         </div>
       </div>
     </div>

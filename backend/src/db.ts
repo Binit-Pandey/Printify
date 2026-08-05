@@ -83,6 +83,36 @@ db.exec(`
     logo          TEXT,
     vatRate       REAL
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id             TEXT PRIMARY KEY,
+    company_name   TEXT,
+    full_name      TEXT NOT NULL,
+    email          TEXT UNIQUE NOT NULL,
+    username       TEXT UNIQUE,
+    password_hash  TEXT NOT NULL,
+    role           TEXT NOT NULL DEFAULT 'staff',
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    email             TEXT NOT NULL,
+    code              TEXT NOT NULL,
+    expires_at        TEXT NOT NULL,
+    used              INTEGER NOT NULL DEFAULT 0,
+    resend_count      INTEGER NOT NULL DEFAULT 0,
+    resend_window_start TEXT,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // ── Migration: add new bill columns if missing ──────────────────────────────

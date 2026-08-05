@@ -1,10 +1,23 @@
-import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings } from '../types';
+import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings, User } from '../types';
 
 const BASE = '/api';
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...options,
   });
   if (!res.ok) {
@@ -76,5 +89,24 @@ export const api = {
     update: (s: CompanySettings) => put<CompanySettings>('/settings', s),
     exportData: () => get<any>('/settings/export'),
     importData: (data: any) => post<any>('/settings/import', data),
+  },
+
+  auth: {
+    login: (username: string, password: string) =>
+      post<{ user: User; token: string }>('/auth/login', { username, password }),
+    registerAdmin: (data: { companyName: string; fullName: string; email: string; password: string; confirmPassword: string }) =>
+      post<{ message: string; email: string }>('/auth/register-admin', data),
+    verifyOtp: (email: string, code: string) =>
+      post<{ message: string }>('/auth/verify-otp', { email, code }),
+    completeRegistration: (data: { companyName: string; fullName: string; email: string; password: string }) =>
+      post<{ user: User; token: string }>('/auth/complete-registration', data),
+    resendOtp: (email: string) =>
+      post<{ message: string }>('/auth/resend-otp', { email }),
+  },
+
+  staff: {
+    list: () => get<{ users: User[] }>('/staff'),
+    create: (data: { username: string; fullName: string; email: string; password: string }) =>
+      post<{ user: User }>('/staff', data),
   },
 };

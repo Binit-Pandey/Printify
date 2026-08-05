@@ -17,6 +17,8 @@ import expensesRouter from './routes/expenses';
 import billsRouter from './routes/bills';
 import settingsRouter from './routes/settings';
 import vendorPaymentsRouter from './routes/vendorPayments';
+import authRouter from './routes/auth';
+import staffRouter from './routes/staff';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -32,6 +34,8 @@ app.use('/api/expenses', expensesRouter);
 app.use('/api/bills', billsRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/vendor-payments', vendorPaymentsRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/staff', staffRouter);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 

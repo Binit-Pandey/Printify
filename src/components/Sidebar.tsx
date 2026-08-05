@@ -21,7 +21,7 @@ const menuItems = [
   { icon: FileText, label: 'Bills', path: '/bills' },
   { icon: BarChart3, label: 'Reports', path: '/reports' },
   { icon: Settings, label: 'Settings', path: '/settings' },
-  { icon: Users2, label: 'User Management', path: '/users' },
+  { icon: Users2, label: 'Staff Management', path: '/staff' },
   { icon: Archive, label: 'Backup', path: '/backup' },
   { icon: Clock, label: 'Audit Logs', path: '/audit' },
 ];
@@ -34,7 +34,10 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
     if (user?.role === 'staff') {
       return ['Dashboard', 'Billing', 'Customers', 'Inventory', 'Expenses', 'Bills', 'Reports'].includes(item.label);
     }
-    return !['User Management', 'Backup', 'Audit Logs'].includes(item.label); // Hide advanced admin features for now
+    if (item.label === 'Staff Management') {
+      return user?.role === 'admin' || user?.role === 'superadmin';
+    }
+    return !['Backup', 'Audit Logs'].includes(item.label);
   });
 
   return (

@@ -1,9 +1,12 @@
 export interface User {
   id: string;
-  username: string;
+  username?: string;
+  email: string;
   role: 'superadmin' | 'admin' | 'staff';
   name: string;
-  email: string;
+  full_name?: string;
+  company_name?: string;
+  email_verified?: boolean;
   avatar?: string;
   lastLogin?: string;
 }

@@ -1,15 +1,16 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '../types';
-import { mockUsers } from '../mock-data';
+import { api, setAuthToken } from '../services/api';
 
-const DEMO_PASSWORD = 'admin123';
 const STORAGE_KEY = 'printpress_user';
+const TOKEN_KEY = 'printpress_token';
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => boolean;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
+  setUser: (user: User | null) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,26 +24,55 @@ function loadUser(): User | null {
   }
 }
 
+function loadToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(loadUser);
+  const [user, setUserState] = useState<User | null>(loadUser);
 
-  const login = (username: string, password: string): boolean => {
-    const foundUser = mockUsers.find(u => u.username === username);
-    if (foundUser && password === DEMO_PASSWORD) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(foundUser));
-      setUser(foundUser);
-      return true;
+  const setUser = useCallback((u: User | null) => {
+    setUserState(u);
+    if (u) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+      setAuthToken(null);
     }
-    return false;
-  };
+  }, []);
 
-  const logout = () => {
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+    try {
+      const res = await api.auth.login(username, password);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(res.user));
+      localStorage.setItem(TOKEN_KEY, res.token);
+      setAuthToken(res.token);
+      setUserState(res.user);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
-  };
+    localStorage.removeItem(TOKEN_KEY);
+    setAuthToken(null);
+    setUserState(null);
+  }, []);
+
+  const token = loadToken();
+  if (token) {
+    setAuthToken(token);
+  }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );
