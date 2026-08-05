@@ -1,10 +1,9 @@
 import { createContext, useContext, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '../types';
-import { api, setAuthToken } from '../services/api';
+import { api, setAuthToken, TOKEN_KEY } from '../services/api';
 
 const STORAGE_KEY = 'printpress_user';
-const TOKEN_KEY = 'printpress_token';
 
 interface AuthContextType {
   user: User | null;

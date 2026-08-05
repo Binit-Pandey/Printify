@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Printer, ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import { api } from '../services/api';
+import { api, setAuthToken } from '../services/api';
 
 const AdminRegister = () => {
   const navigate = useNavigate();
@@ -196,7 +196,7 @@ function OtpScreen({ email, registrationData, onBack }: {
       await api.auth.verifyOtp(email, otp);
       const res = await api.auth.completeRegistration({ ...registrationData, email });
       localStorage.setItem('printpress_user', JSON.stringify(res.user));
-      localStorage.setItem('printpress_token', res.token);
+      setAuthToken(res.token);
       window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message || 'Verification failed');

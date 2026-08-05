@@ -1,7 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../contexts/store';
 import { useTheme } from '../contexts/ThemeContext';
-import { Save, AlertCircle, CheckCircle2, Sun, Moon, Upload, Download, Image } from 'lucide-react';
+import { Save, AlertCircle, Sun, Moon, Upload, Download, Image } from 'lucide-react';
 import { api } from '../services/api';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
@@ -149,17 +149,18 @@ const Settings = () => {
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
-              {formData.logo && (
-                <div className="w-16 h-16 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-center justify-center bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+              <div className="w-16 h-16 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-center justify-center bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                {formData.logo ? (
                   <img
                     src={formData.logo}
                     alt="Logo"
                     className="w-full h-full object-contain"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
-                  {!formData.logo && <Image className="w-6 h-6 text-gray-400" />}
-                </div>
-              )}
+                ) : (
+                  <Image className="w-6 h-6 text-gray-400" />
+                )}
+              </div>
             </div>
           </div>
 

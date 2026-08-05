@@ -1,20 +1,37 @@
 import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings, User } from '../types';
 
 const BASE = '/api';
+export const TOKEN_KEY = 'printpress_token';
+
 let authToken: string | null = null;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // localStorage unavailable
+  }
 }
 
 export function getAuthToken(): string | null {
-  return authToken;
+  if (authToken) return authToken;
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
+  const token = getAuthToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
   const res = await fetch(`${BASE}${path}`, {
     headers,

@@ -75,7 +75,7 @@ export function authenticate(req: AuthenticatedRequest, res: Response, next: Nex
 }
 
 export function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'superadmin')) {
     res.status(403).json({ error: 'Admin access required' });
     return;
   }

@@ -52,7 +52,7 @@ const StaffManagement = () => {
     }
   };
 
-  if (user?.role !== 'admin') {
+  if (user?.role !== 'admin' && user?.role !== 'superadmin') {
     return (
       <div className="p-8 text-center">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Access Denied</h2>
