@@ -173,7 +173,7 @@ const Dashboard = () => {
                 <Tooltip
                   cursor={{fill: dark ? '#1e293b' : '#f1f5f9'}}
                   contentStyle={{borderRadius: '8px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#1e293b' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a'}}
-                  formatter={(value: number, name: string) => [`NPR ${value.toLocaleString()}`, name.charAt(0).toUpperCase() + name.slice(1)]}
+                  formatter={(value, name) => [`NPR ${Number(value ?? 0).toLocaleString()}`, String(name ?? '').replace(/^./, (c) => c.toUpperCase())]}
                 />
                 <Bar dataKey="sales" fill="#2563eb" radius={[6, 6, 0, 0]} name="Sales" />
                 <Bar dataKey="expenses" fill="#ef4444" radius={[6, 6, 0, 0]} name="Expenses" />
@@ -201,7 +201,7 @@ const Dashboard = () => {
                       <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => [`NPR ${value.toLocaleString()}`, 'Amount']} />
+                  <Tooltip formatter={(value: number | string | ReadonlyArray<number | string> | undefined) => [`NPR ${Number(value ?? 0).toLocaleString()}`, 'Amount']} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (

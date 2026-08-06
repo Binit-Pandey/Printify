@@ -76,7 +76,7 @@ const Inventory = () => {
     }
 
     const newItem: InventoryItem = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       name: formData.name!,
       category: formData.category!,
       unit: formData.unit!,
@@ -86,10 +86,8 @@ const Inventory = () => {
       status: (formData.quantity || 0) > 20 ? 'In Stock' : (formData.quantity || 0) > 0 ? 'Low Stock' : 'Out of Stock',
     };
 
-    let itemSaved = false;
     try {
       await addInventoryItem(newItem);
-      itemSaved = true;
     } catch {
       setToast('Failed to add item');
       setToastType('error');
@@ -104,7 +102,7 @@ const Inventory = () => {
       if (vendor && total > 0) {
         try {
           const vp: VendorPayment = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: crypto.randomUUID(),
             vendorId: vendor.id,
             amount: total,
             date: new Date().toISOString().split('T')[0],

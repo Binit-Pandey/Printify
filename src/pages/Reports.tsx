@@ -334,7 +334,7 @@ const Reports = () => {
               <Tooltip
                 cursor={{stroke: '#3b82f6'}}
                 contentStyle={{borderRadius: '16px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', backgroundColor: dark ? '#1e293b' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a'}}
-                formatter={(value: number, name: string) => [`NPR ${value.toLocaleString()}`, name.charAt(0).toUpperCase() + name.slice(1)]}
+                formatter={(value, name) => [`NPR ${Number(value ?? 0).toLocaleString()}`, String(name ?? '').replace(/^./, (c) => c.toUpperCase())]}
               />
               <Legend />
               <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} dot={{fill: '#3b82f6', r: 4}} name="Revenue" />
@@ -358,7 +358,7 @@ const Reports = () => {
                 <Tooltip
                   cursor={{fill: dark ? '#1e293b' : '#f3f4f6'}}
                   contentStyle={{borderRadius: '16px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', backgroundColor: dark ? '#1e293b' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a'}}
-                  formatter={(value: number) => [`NPR ${value.toLocaleString()}`, 'Revenue']}
+                  formatter={(value: number | string | ReadonlyArray<number | string> | undefined) => [`NPR ${Number(value ?? 0).toLocaleString()}`, 'Revenue']}
                 />
                 <Bar dataKey="revenue" fill="#3b82f6" radius={[6, 6, 0, 0]} />
               </BarChart>
@@ -411,13 +411,13 @@ const Reports = () => {
                   cx="50%" cy="50%" outerRadius={100}
                   paddingAngle={3}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 >
                   {reportData.expenseBreakdown.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => [`NPR ${value.toLocaleString()}`, 'Amount']} />
+                <Tooltip formatter={(value: number | string | ReadonlyArray<number | string> | undefined) => [`NPR ${Number(value ?? 0).toLocaleString()}`, 'Amount']} />
               </PieChart>
             </ResponsiveContainer>
           </div>

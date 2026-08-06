@@ -153,12 +153,12 @@ export const useStore = create<AppState>()((set) => ({
     const vendors = await api.vendors.list();
     set({ vendors });
   },
-  deleteVendorPayment: async (id, vendorId) => {
+  deleteVendorPayment: async (id, _vendorId) => {
     await api.vendorPayments.remove(id);
     const vendors = await api.vendors.list();
     set({ vendors });
   },
-  refreshVendor: async (id) => {
+  refreshVendor: async (_id) => {
     const vendors = await api.vendors.list();
     set({ vendors });
   },

@@ -24,7 +24,21 @@ import { errorHandler } from './middleware/errorHandler';
 const app = express();
 const PORT = 3001;
 
-app.use(cors());
+const allowedOrigins = new Set([
+  'http://localhost:5000',
+  ...(process.env.REPLIT_DEV_DOMAIN ? [`https://${process.env.REPLIT_DEV_DOMAIN}`] : []),
+]);
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (server-to-server, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use('/api/customers', customersRouter);

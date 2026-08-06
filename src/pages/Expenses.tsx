@@ -67,7 +67,7 @@ const Expenses = () => {
   const handleAddExpense = () => {
     if (!validateForm()) return;
     const newExpense: Expense = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       category: formData.category!,
       amount: formData.amount!,
       reason: formData.reason || '',
@@ -128,7 +128,7 @@ const Expenses = () => {
           <p className="text-gray-500 mt-1">Track and manage your business expenses</p>
         </div>
         <button
-          onClick={() => resetForm() || setShowAddModal(true)}
+          onClick={() => { resetForm(); setShowAddModal(true); }}
           className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 dark:shadow-none font-bold"
         >
           <Plus className="w-5 h-5" />

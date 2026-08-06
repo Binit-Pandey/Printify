@@ -43,7 +43,7 @@ router.post('/find-or-create', wrap((req, res, next) => {
     }
   }
 
-  const id = 'c_' + Math.random().toString(36).substr(2, 9);
+  const id = 'c_' + crypto.randomUUID().replace(/-/g, '');
   db.prepare('INSERT INTO customers (id, name, phone, address, email) VALUES (@id, @name, @phone, @address, @email)')
     .run({ id, name, phone, address: address || '', email: email || null });
 

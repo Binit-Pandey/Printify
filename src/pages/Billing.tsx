@@ -51,7 +51,7 @@ const Billing = () => {
   const customerValid = custName.trim() !== '' && (!phoneRequired || custPhone.trim() !== '');
 
   const addItem = useCallback((item: Omit<BillItem, 'id'>) => {
-    setItems(prev => [...prev, { ...item, id: Math.random().toString(36).substr(2, 9) }]);
+    setItems(prev => [...prev, { ...item, id: crypto.randomUUID() }]);
   }, []);
 
   const removeItem = useCallback((id: string) => {
@@ -92,7 +92,7 @@ const Billing = () => {
     } else {
       // Cash/Card/Online: embed customer info in bill but don't store separately
       customer = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: crypto.randomUUID(),
         name: custName.trim(),
         phone: custPhone.trim() || '',
         address: custAddress.trim() || '',
@@ -102,7 +102,7 @@ const Billing = () => {
     }
 
     const bill: Bill = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       billNumber,
       date: billDate,
       customer,

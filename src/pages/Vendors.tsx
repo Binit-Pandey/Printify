@@ -87,7 +87,7 @@ const Vendors = () => {
   const handleAddVendor = async () => {
     if (!validateForm()) return;
     const newVendor: Vendor = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       name: formData.name!,
       phone: formData.phone!,
       address: formData.address || '',
@@ -144,7 +144,7 @@ const Vendors = () => {
   const handlePay = async () => {
     if (!payTarget || payAmount <= 0) return;
     const vp: VendorPayment = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       vendorId: payTarget.id,
       amount: payAmount,
       date: new Date().toISOString().split('T')[0],
@@ -211,8 +211,6 @@ const Vendors = () => {
     // Summary stats
     const vendorsWithDue = vendors.filter(v => vendorStats[v.id]?.dueAmount > 0);
     const totalDue = vendorsWithDue.reduce((s, v) => s + (vendorStats[v.id]?.dueAmount || 0), 0);
-    const totalBill = vendors.reduce((s, v) => s + (vendorStats[v.id]?.totalBill || 0), 0);
-    const totalPaid = vendors.reduce((s, v) => s + (vendorStats[v.id]?.totalPaid || 0), 0);
 
     pdf.setTextColor(0, 0, 0);
     pdf.setFontSize(9);

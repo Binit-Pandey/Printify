@@ -47,7 +47,7 @@ const Bills = () => {
     const newBillNumber = `INV-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-5)}`;
     const duplicate = {
       ...bill,
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       billNumber: newBillNumber,
       date: new Date().toISOString().split('T')[0],
       status: 'Pending' as const,
