@@ -4,288 +4,59 @@ import { useTheme } from '../contexts/ThemeContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import Card from '../components/ui/Card';
 import { useMemo } from 'react';
-import { Wallet } from 'lucide-react';
+import { ArrowUpRight, BarChart3, Clock3, Receipt, TrendingDown, TrendingUp, Users, Wallet } from 'lucide-react';
 
-const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+const PIE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+function MetricCard({ label, value, detail, icon: Icon, tone = 'blue' }: { label: string; value: string; detail?: string; icon: typeof Wallet; tone?: 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' }) {
+  const tones = {
+    blue: 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400',
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400',
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400',
+    rose: 'bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400',
+    violet: 'bg-violet-50 text-violet-600 dark:bg-violet-950/30 dark:text-violet-400',
+  };
+  return <Card className="flex min-h-36 flex-col justify-between p-5"><div className="flex items-start justify-between gap-3"><div className="text-xs font-bold uppercase tracking-[0.13em] text-slate-500 dark:text-slate-400">{label}</div><div className={`flex size-9 items-center justify-center rounded-xl ${tones[tone]}`}><Icon aria-hidden="true" className="size-4" /></div></div><div><div className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">{value}</div>{detail && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{detail}</p>}</div></Card>;
+}
+
+function BillsTable({ bills }: { bills: any[] }) {
+  if (!bills.length) return <div className="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 text-center dark:border-slate-800"><Receipt aria-hidden="true" className="mb-3 size-7 text-slate-300 dark:text-slate-600" /><p className="font-semibold">No bills yet</p><p className="mt-1 text-sm text-slate-500">New bills will appear here.</p></div>;
+  return <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:text-slate-400"><th className="pb-3 font-semibold">Bill no.</th><th className="pb-3 font-semibold">Customer</th><th className="pb-3 text-right font-semibold">Amount</th><th className="pb-3 text-center font-semibold">Status</th></tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{bills.slice(-5).reverse().map(bill => <tr key={bill.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"><td className="py-4 font-mono font-semibold text-blue-600 dark:text-blue-400">{bill.billNumber}</td><td className="py-4 font-medium">{bill.customer.name}</td><td className="py-4 text-right font-semibold">NPR {bill.grandTotal.toLocaleString()}</td><td className="py-4 text-center"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${bill.status === 'Paid' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'}`}>{bill.status}</span></td></tr>)}</tbody></table></div>;
+}
 
 const Dashboard = () => {
   const { user } = useAuth();
   const { bills, customers, expenses } = useStore();
   const { dark } = useTheme();
-
   const metrics = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     const todayBills = bills.filter(b => b.date === today);
     const todaySales = todayBills.reduce((sum, b) => sum + b.grandTotal, 0);
     const todayExpenses = expenses.filter(e => e.date === today).reduce((sum, e) => sum + e.amount, 0);
-    const todayProfit = todaySales - todayExpenses;
-
     const monthlyRevenue = bills.reduce((sum, b) => sum + b.grandTotal, 0);
     const monthlyExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const monthlyProfit = monthlyRevenue - monthlyExpenses;
-    const pendingBills = bills.filter(b => b.status === 'Pending').length;
-    const pendingAmount = bills.filter(b => b.status === 'Pending').reduce((s, b) => s + b.grandTotal, 0);
-
-    return {
-      todaySales, todayBillsCount: todayBills.length, todayExpenses, todayProfit,
-      monthlyRevenue, monthlyExpenses, monthlyProfit,
-      activeCustomers: customers.length, pendingBills, pendingAmount
-    };
+    const pending = bills.filter(b => b.status === 'Pending');
+    return { todaySales, todayBillsCount: todayBills.length, todayExpenses, todayProfit: todaySales - todayExpenses, monthlyRevenue, monthlyProfit: monthlyRevenue - monthlyExpenses, activeCustomers: customers.length, pendingBills: pending.length, pendingAmount: pending.reduce((s, b) => s + b.grandTotal, 0) };
   }, [bills, customers, expenses]);
-
   const chartData = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return { name: days[d.getDay()], date: d.toISOString().split('T')[0], sales: 0, expenses: 0 };
-    });
-
-    last7Days.forEach(day => {
-      day.sales = bills.filter(b => b.date === day.date).reduce((sum, b) => sum + b.grandTotal, 0);
-      day.expenses = expenses.filter(e => e.date === day.date).reduce((sum, e) => sum + e.amount, 0);
-    });
-
-    const serviceMap: Record<string, number> = {};
-    bills.forEach(b => {
-      b.items.forEach(item => {
-        serviceMap[item.name] = (serviceMap[item.name] || 0) + item.quantity;
-      });
-    });
-    const topServices = Object.entries(serviceMap)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-
-    const expenseMap: Record<string, number> = {};
-    expenses.forEach(e => {
-      expenseMap[e.category] = (expenseMap[e.category] || 0) + e.amount;
-    });
-    const expenseBreakdown = Object.entries(expenseMap)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
-
+    const last7Days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return { name: days[d.getDay()], date: d.toISOString().split('T')[0], sales: 0, expenses: 0 }; });
+    last7Days.forEach(day => { day.sales = bills.filter(b => b.date === day.date).reduce((sum, b) => sum + b.grandTotal, 0); day.expenses = expenses.filter(e => e.date === day.date).reduce((sum, e) => sum + e.amount, 0); });
+    const serviceMap: Record<string, number> = {}; bills.forEach(b => b.items.forEach(item => { serviceMap[item.name] = (serviceMap[item.name] || 0) + item.quantity; }));
+    const topServices = Object.entries(serviceMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
+    const expenseMap: Record<string, number> = {}; expenses.forEach(e => { expenseMap[e.category] = (expenseMap[e.category] || 0) + e.amount; });
+    const expenseBreakdown = Object.entries(expenseMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
     return { last7Days, topServices, expenseBreakdown };
   }, [bills, expenses]);
 
-  if (user?.role === 'staff') {
-    return (
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-50">Staff Dashboard</h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-2">Welcome back, <span className="text-blue-600 dark:text-blue-400 font-medium">{user.name}</span></p>
-        </div>
+  if (user?.role === 'staff') return <div className="flex flex-col gap-7"><header><p className="mb-2 text-sm font-semibold text-blue-600 dark:text-blue-400">Today at a glance</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Staff dashboard</h1><p className="mt-2 text-slate-500 dark:text-slate-400">Welcome back, <span className="font-semibold text-slate-800 dark:text-slate-200">{user.name}</span></p></header><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><MetricCard label="Today&apos;s sales" value={`NPR ${metrics.todaySales.toLocaleString()}`} icon={Wallet} /><MetricCard label="Today&apos;s bills" value={String(metrics.todayBillsCount)} icon={Receipt} tone="emerald" /><MetricCard label="Today&apos;s expenses" value={`NPR ${metrics.todayExpenses.toLocaleString()}`} icon={TrendingDown} tone="amber" /></div><Card><div className="mb-6 flex items-center justify-between"><div><h2 className="text-lg font-bold">Recent bills</h2><p className="mt-1 text-sm text-slate-500">The latest activity from your team.</p></div><Clock3 aria-hidden="true" className="size-5 text-slate-400" /></div><BillsTable bills={bills} /></Card></div>;
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-gradient-to-br from-blue-50 dark:from-blue-950/20 to-transparent border-l-4 border-blue-600">
-            <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Today's Sales</div>
-            <div className="text-4xl font-bold mt-3 text-blue-600 dark:text-blue-400">NPR {metrics.todaySales.toLocaleString()}</div>
-          </Card>
-          <Card className="bg-gradient-to-br from-emerald-50 dark:from-emerald-950/20 to-transparent border-l-4 border-emerald-500">
-            <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Today's Bills</div>
-            <div className="text-4xl font-bold mt-3 text-emerald-500 dark:text-emerald-400">{metrics.todayBillsCount}</div>
-          </Card>
-          <Card className="bg-gradient-to-br from-orange-50 dark:from-orange-950/20 to-transparent border-l-4 border-orange-500">
-            <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Today's Expenses</div>
-            <div className="text-4xl font-bold mt-3 text-orange-500 dark:text-orange-400">NPR {metrics.todayExpenses.toLocaleString()}</div>
-          </Card>
-        </div>
-
-        <Card>
-          <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-slate-50">Recent Bills</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                  <th className="pb-4 font-semibold">Bill No</th>
-                  <th className="pb-4 font-semibold">Customer</th>
-                  <th className="pb-4 font-semibold text-right">Amount</th>
-                  <th className="pb-4 font-semibold text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {bills.slice(-5).reverse().map(bill => (
-                  <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="py-4 font-mono font-semibold text-blue-600 dark:text-blue-400">{bill.billNumber}</td>
-                    <td className="py-4 text-slate-900 dark:text-slate-50">{bill.customer.name}</td>
-                    <td className="py-4 text-right font-semibold text-slate-900 dark:text-slate-50">NPR {bill.grandTotal.toLocaleString()}</td>
-                    <td className="py-4 text-center">
-                      <span className={`px-3 py-1 rounded-md text-xs font-semibold ${bill.status === 'Paid' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' : 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300'}`}>
-                        {bill.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-50">Dashboard</h1>
-        <p className="text-slate-600 dark:text-slate-400 mt-2">Real-time overview of your printing press</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        <Card className="bg-gradient-to-br from-blue-50 dark:from-blue-950/20 to-transparent border-l-4 border-blue-600">
-          <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Today's Sales</div>
-          <div className="text-3xl font-bold mt-3 text-blue-600 dark:text-blue-400">NPR {metrics.todaySales.toLocaleString()}</div>
-        </Card>
-        <Card className="bg-gradient-to-br from-emerald-50 dark:from-emerald-950/20 to-transparent border-l-4 border-emerald-500">
-          <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Today's Profit</div>
-          <div className={`text-3xl font-bold mt-3 ${metrics.todayProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            NPR {metrics.todayProfit.toLocaleString()}
-          </div>
-        </Card>
-        <Card className="bg-gradient-to-br from-orange-50 dark:from-orange-950/20 to-transparent border-l-4 border-orange-500">
-          <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Active Customers</div>
-          <div className="text-3xl font-bold mt-3 text-orange-500 dark:text-orange-400">{metrics.activeCustomers}</div>
-        </Card>
-        <Card className="bg-gradient-to-br from-red-50 dark:from-red-950/20 to-transparent border-l-4 border-red-500">
-          <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Pending Bills</div>
-          <div className="text-3xl font-bold mt-3 text-red-500 dark:text-red-400">{metrics.pendingBills}</div>
-          <p className="text-xs text-gray-500 mt-1">NPR {metrics.pendingAmount.toLocaleString()}</p>
-        </Card>
-        <Card className="bg-gradient-to-br from-purple-50 dark:from-purple-950/20 to-transparent border-l-4 border-purple-500">
-          <div className="text-sm font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">Monthly Profit</div>
-          <div className={`text-3xl font-bold mt-3 ${metrics.monthlyProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            NPR {metrics.monthlyProfit.toLocaleString()}
-          </div>
-          <p className="text-xs text-gray-500 mt-1">Revenue: {metrics.monthlyRevenue.toLocaleString()}</p>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-slate-50">Weekly Sales vs Expenses</h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData.last7Days}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <Tooltip
-                  cursor={{fill: dark ? '#1e293b' : '#f1f5f9'}}
-                  contentStyle={{borderRadius: '8px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#1e293b' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a'}}
-                  formatter={(value, name) => [`NPR ${Number(value ?? 0).toLocaleString()}`, String(name ?? '').replace(/^./, (c) => c.toUpperCase())]}
-                />
-                <Bar dataKey="sales" fill="#2563eb" radius={[6, 6, 0, 0]} name="Sales" />
-                <Bar dataKey="expenses" fill="#ef4444" radius={[6, 6, 0, 0]} name="Expenses" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        <Card>
-          <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-slate-50 flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-red-500" />
-            Expense Breakdown
-          </h3>
-          <div className="h-48 flex items-center justify-center">
-            {chartData.expenseBreakdown.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData.expenseBreakdown}
-                    cx="50%" cy="50%" innerRadius={50} outerRadius={75}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {chartData.expenseBreakdown.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value: number | string | ReadonlyArray<number | string> | undefined) => [`NPR ${Number(value ?? 0).toLocaleString()}`, 'Amount']} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-gray-400 text-sm">No expenses</p>
-            )}
-          </div>
-          <div className="space-y-2 mt-4">
-            {chartData.expenseBreakdown.map((exp, index) => (
-              <div key={exp.name} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: PIE_COLORS[index % PIE_COLORS.length]}}></div>
-                  <span className="text-gray-600 dark:text-gray-400">{exp.name}</span>
-                </div>
-                <span className="font-semibold">NPR {exp.value.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-slate-50">Top Selling Services</h3>
-          <div className="h-80 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData.topServices}
-                  cx="50%" cy="50%" innerRadius={70} outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {chartData.topServices.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{borderRadius: '8px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#1e293b' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a'}}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-4 grid grid-cols-2 gap-4">
-            {chartData.topServices.map((service, index) => (
-              <div key={service.name} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{backgroundColor: PIE_COLORS[index % PIE_COLORS.length]}}></div>
-                <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate">{service.name}</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card>
-          <h3 className="text-lg font-bold mb-6 text-slate-900 dark:text-slate-50">Recent Bills</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                  <th className="pb-4 font-semibold">Bill No</th>
-                  <th className="pb-4 font-semibold">Customer</th>
-                  <th className="pb-4 font-semibold text-right">Amount</th>
-                  <th className="pb-4 font-semibold text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {bills.slice(-5).reverse().map(bill => (
-                  <tr key={bill.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                    <td className="py-4 font-mono font-semibold text-blue-600 dark:text-blue-400">{bill.billNumber}</td>
-                    <td className="py-4 text-slate-900 dark:text-slate-50">{bill.customer.name}</td>
-                    <td className="py-4 text-right font-semibold text-slate-900 dark:text-slate-50">NPR {bill.grandTotal.toLocaleString()}</td>
-                    <td className="py-4 text-center">
-                      <span className={`px-3 py-1 rounded-md text-xs font-semibold ${bill.status === 'Paid' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300' : 'bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300'}`}>
-                        {bill.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
+  return <div className="flex flex-col gap-7"><header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-semibold text-blue-600 dark:text-blue-400">Print floor overview</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Dashboard</h1><p className="mt-2 text-slate-500 dark:text-slate-400">A real-time view of your printing press.</p></div><div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><span className="size-2 rounded-full bg-emerald-500" />Live data</div></header>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"><MetricCard label="Today&apos;s sales" value={`NPR ${metrics.todaySales.toLocaleString()}`} icon={Wallet} /><MetricCard label="Today&apos;s profit" value={`NPR ${metrics.todayProfit.toLocaleString()}`} icon={metrics.todayProfit >= 0 ? TrendingUp : TrendingDown} tone={metrics.todayProfit >= 0 ? 'emerald' : 'rose'} /><MetricCard label="Active customers" value={String(metrics.activeCustomers)} icon={Users} tone="amber" /><MetricCard label="Pending bills" value={String(metrics.pendingBills)} detail={`NPR ${metrics.pendingAmount.toLocaleString()} outstanding`} icon={Clock3} tone="rose" /><MetricCard label="Monthly profit" value={`NPR ${metrics.monthlyProfit.toLocaleString()}`} detail={`Revenue NPR ${metrics.monthlyRevenue.toLocaleString()}`} icon={BarChart3} tone="violet" /></div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3"><Card className="lg:col-span-2"><div className="mb-6 flex items-start justify-between"><div><h2 className="text-lg font-bold">Sales vs expenses</h2><p className="mt-1 text-sm text-slate-500">Last seven days</p></div><ArrowUpRight aria-hidden="true" className="size-5 text-slate-400" /></div><div className="h-80">{chartData.last7Days.some(day => day.sales || day.expenses) ? <ResponsiveContainer width="100%" height="100%"><BarChart data={chartData.last7Days}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#1e293b' : '#e2e8f0'} /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} /><YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} /><Tooltip cursor={{ fill: dark ? '#1e293b' : '#f1f5f9' }} contentStyle={{ borderRadius: '12px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#0f172a' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a' }} formatter={(value, name) => [`NPR ${Number(value ?? 0).toLocaleString()}`, String(name ?? '').replace(/^./, c => c.toUpperCase())]} /><Bar dataKey="sales" fill="#2563eb" radius={[6, 6, 0, 0]} name="Sales" /><Bar dataKey="expenses" fill="#f59e0b" radius={[6, 6, 0, 0]} name="Expenses" /></BarChart></ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center text-center"><BarChart3 aria-hidden="true" className="mb-3 size-8 text-slate-300 dark:text-slate-600" /><p className="font-semibold">No activity this week</p><p className="mt-1 text-sm text-slate-500">Sales and expenses will appear here.</p></div>}</div></Card>
+      <Card><div className="mb-4 flex items-center gap-3"><div className="flex size-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400"><Wallet aria-hidden="true" className="size-4" /></div><div><h2 className="text-lg font-bold">Expense breakdown</h2><p className="text-sm text-slate-500">By category</p></div></div><div className="h-48">{chartData.expenseBreakdown.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={chartData.expenseBreakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={5} dataKey="value">{chartData.expenseBreakdown.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value: number | string | ReadonlyArray<number | string> | undefined) => [`NPR ${Number(value ?? 0).toLocaleString()}`, 'Amount']} /></PieChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No expenses recorded</div>}</div><div className="mt-3 flex flex-col gap-2">{chartData.expenseBreakdown.map((exp, index) => <div key={exp.name} className="flex items-center justify-between text-sm"><div className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} /><span className="truncate text-slate-500 dark:text-slate-400">{exp.name}</span></div><span className="font-semibold">NPR {exp.value.toLocaleString()}</span></div>)}</div></Card></div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2"><Card><div className="mb-5"><h2 className="text-lg font-bold">Top selling services</h2><p className="mt-1 text-sm text-slate-500">What customers order most.</p></div><div className="h-72">{chartData.topServices.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={chartData.topServices} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={5} dataKey="value">{chartData.topServices.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip contentStyle={{ borderRadius: '12px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#0f172a' : '#ffffff' }} /></PieChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No services recorded</div>}</div><div className="mt-4 grid grid-cols-2 gap-3">{chartData.topServices.map((service, index) => <div key={service.name} className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} /><span className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{service.name}</span></div>)}</div></Card><Card><div className="mb-6 flex items-center justify-between"><div><h2 className="text-lg font-bold">Recent bills</h2><p className="mt-1 text-sm text-slate-500">Latest customer transactions.</p></div><Receipt aria-hidden="true" className="size-5 text-slate-400" /></div><BillsTable bills={bills} /></Card></div>
+  </div>;
 };
 
 export default Dashboard;
