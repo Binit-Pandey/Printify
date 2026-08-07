@@ -3,6 +3,7 @@ import { scryptSync, randomBytes, timingSafeEqual, randomInt } from 'crypto';
 import { db } from '../db';
 import { wrap } from './wrap';
 import { createMockToken } from '../middleware/auth';
+import { sendOtpEmail } from '../email';
 
 const mockUsers = [
   { id: '1', username: 'superadmin', role: 'superadmin' as const, name: 'Super Admin', email: 'super@printpress.com' },
@@ -69,7 +70,12 @@ router.post('/register-admin', wrap(async (req, res) => {
     VALUES (?, ?, ?, datetime('now'))
   `).run(email, code, expiresAt);
 
-  console.log(`📧 [OTP] Verification code for ${email}: ${code}`);
+  try {
+    await sendOtpEmail(email, code);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+    return;
+  }
 
   res.json({ message: 'Verification code sent to email', email });
 }));
@@ -203,7 +209,12 @@ router.post('/resend-otp', wrap(async (req, res) => {
     WHERE id = ?
   `).run(code, expiresAt, currentRecord.id);
 
-  console.log(`📧 [OTP Resend] Verification code for ${email}: ${code}`);
+  try {
+    await sendOtpEmail(email, code);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+    return;
+  }
 
   res.json({ message: 'New verification code sent' });
 }));
