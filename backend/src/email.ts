@@ -1,10 +1,10 @@
 import nodemailer from 'nodemailer';
 
-const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+const smtpHost = process.env.SMTP_HOST_2 || process.env.SMTP_HOST || 'smtp.gmail.com';
 const smtpPort = Number(process.env.SMTP_PORT || 587);
 const smtpSecure = process.env.SMTP_SECURE === 'true';
-const smtpUser = process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS;
+const smtpUser = process.env.SMTP_USER_2 || process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS_2 || process.env.SMTP_PASS;
 const smtpFrom = process.env.SMTP_FROM || smtpUser;
 
 const hasSmtpCredentials = Boolean(smtpUser && smtpPass);
