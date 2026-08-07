@@ -4,6 +4,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+BACKEND_PORT=3001
+FRONTEND_PORT=5000
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -30,6 +33,41 @@ if ! command -v npm &> /dev/null; then
     exit 1
 fi
 
+# Find PIDs listening on a given port
+pids_on_port() {
+    local port="$1"
+    if command -v lsof &> /dev/null; then
+        lsof -ti tcp:"$port" 2>/dev/null || true
+    elif command -v ss &> /dev/null; then
+        ss -tlnp 2>/dev/null | grep -E ":$port " | grep -oP 'pid=\K[0-9]+' | sort -u || true
+    fi
+}
+
+# Free the ports if stale processes are still holding them
+for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
+    PIDS=$(pids_on_port "$port")
+    if [ -n "$PIDS" ]; then
+        echo -e "${YELLOW}[WARN] Port $port is already in use by stale process(es): $PIDS${NC}"
+        for pid in $PIDS; do
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        sleep 2
+        PIDS=$(pids_on_port "$port")
+        if [ -n "$PIDS" ]; then
+            for pid in $PIDS; do
+                kill -KILL "$pid" 2>/dev/null || true
+            done
+            sleep 1
+        fi
+        PIDS=$(pids_on_port "$port")
+        if [ -n "$PIDS" ]; then
+            echo -e "${RED}[ERROR] Could not free port $port. Please stop the process(es) manually: $PIDS${NC}"
+            exit 1
+        fi
+        echo -e "${GREEN}[OK] Port $port freed.${NC}"
+    fi
+done
+
 echo -e "${CYAN}[1/3] Installing dependencies (if needed)...${NC}"
 echo ""
 
@@ -48,42 +86,68 @@ else
 fi
 
 echo ""
-echo -e "${CYAN}[2/3] Starting Backend Server (port 3001)...${NC}"
-echo -e "${CYAN}[3/3] Starting Frontend Server (port 5000)...${NC}"
+echo -e "${CYAN}[2/3] Starting Backend Server (port $BACKEND_PORT)...${NC}"
+echo -e "${CYAN}[3/3] Starting Frontend Server (port $FRONTEND_PORT)...${NC}"
 echo ""
 echo -e "${GREEN}============================================"
-echo "  Backend:  http://localhost:3001"
-echo "  Frontend: http://localhost:5000"
+echo "  Backend:  http://localhost:$BACKEND_PORT"
+echo "  Frontend: http://localhost:$FRONTEND_PORT"
 echo -e "============================================${NC}"
 echo ""
-echo "  Press Ctrl+C in either terminal to stop."
+echo "  Press Ctrl+C to stop both servers."
 echo -e "${GREEN}============================================${NC}"
 echo ""
 
-# Cleanup function: kill both processes on exit
+# Cleanup function: kill both process trees on exit
+CLEANUP_DONE=0
 cleanup() {
+    if [ "$CLEANUP_DONE" = "1" ]; then
+        return 0
+    fi
+    CLEANUP_DONE=1
+    local pid
     echo ""
     echo -e "${YELLOW}Shutting down servers...${NC}"
-    kill "$BACKEND_PID" 2>/dev/null
-    kill "$FRONTEND_PID" 2>/dev/null
-    wait "$BACKEND_PID" 2>/dev/null
-    wait "$FRONTEND_PID" 2>/dev/null
+    for pid in "$BACKEND_PID" "$FRONTEND_PID"; do
+        if [ -n "$pid" ]; then
+            kill -TERM -"$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+        fi
+    done
+    sleep 2
+    for pid in "$BACKEND_PID" "$FRONTEND_PID"; do
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill -KILL -"$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+        fi
+    done
+    BACKEND_PID=""
+    FRONTEND_PID=""
     echo -e "${GREEN}All servers stopped.${NC}"
     exit 0
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup SIGINT SIGTERM EXIT
 
-# Start backend
-(cd backend && npm run dev) &
+# Start backend in its own process group so we can kill the whole tree later
+if command -v setsid &> /dev/null; then
+    setsid bash -c 'cd backend && exec npm run dev' &
+else
+    (cd backend && npm run dev) &
+fi
 BACKEND_PID=$!
 
 # Wait a moment for backend to initialize
 sleep 2
 
-# Start frontend
-npm run dev &
+# Start frontend in its own process group
+if command -v setsid &> /dev/null; then
+    setsid npm run dev &
+else
+    npm run dev &
+fi
 FRONTEND_PID=$!
 
-# Wait for both
-wait
+# Monitor both servers. A plain `wait` would block the signal trap from
+# running, so poll in short intervals instead.
+while kill -0 "$BACKEND_PID" 2>/dev/null || kill -0 "$FRONTEND_PID" 2>/dev/null; do
+    sleep 1
+done
