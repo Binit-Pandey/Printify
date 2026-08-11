@@ -298,6 +298,27 @@ const Settings = () => {
         </p>
       </div>
 
+      {/* Staff Permissions */}
+      <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
+        <h2 className="text-2xl font-bold mb-6">Staff Permissions</h2>
+
+        <label className="flex items-start gap-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!formData.staffExpenseEdit}
+            onChange={(e) => handleChange('staffExpenseEdit', e.target.checked)}
+            className="mt-1 size-5 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+          />
+          <div>
+            <p className="font-bold text-gray-900 dark:text-gray-100">Allow staff to edit their own expense submissions</p>
+            <p className="text-sm text-gray-500 mt-1">
+              When enabled, staff accounts can edit the expense entries they submitted. Staff can never view the company&apos;s
+              expense list, reports, or other financial data.
+            </p>
+          </div>
+        </label>
+      </div>
+
       {/* Data Management */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
         <h2 className="text-2xl font-bold mb-6">Data Management</h2>

@@ -32,7 +32,7 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
 
   const filteredMenu = menuItems.filter(item => {
     if (user?.role === 'staff') {
-      return ['Dashboard', 'Billing', 'Customers', 'Inventory', 'Expenses', 'Bills', 'Reports'].includes(item.label);
+      return item.label === 'Dashboard';
     }
     if (item.label === 'Staff Management') {
       return user?.role === 'admin' || user?.role === 'superadmin';

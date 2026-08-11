@@ -163,6 +163,36 @@ function migrateCustomersTable() {
 
 migrateCustomersTable();
 
+// ── Migration: expenses ownership / receipt attachment fields ────────────────
+function migrateExpensesTable() {
+  const cols = db.prepare('PRAGMA table_info(expenses)').all() as Array<{ name: string }>;
+  const colNames = cols.map(c => c.name);
+
+  if (!colNames.includes('user_id')) {
+    db.exec("ALTER TABLE expenses ADD COLUMN user_id TEXT");
+  }
+  if (!colNames.includes('receiptName')) {
+    db.exec("ALTER TABLE expenses ADD COLUMN receiptName TEXT NOT NULL DEFAULT ''");
+  }
+  if (!colNames.includes('receiptData')) {
+    db.exec("ALTER TABLE expenses ADD COLUMN receiptData TEXT NOT NULL DEFAULT ''");
+  }
+}
+
+migrateExpensesTable();
+
+// ── Migration: staff expense edit permission flag ────────────────────────────
+function migrateSettingsTable() {
+  const cols = db.prepare('PRAGMA table_info(settings)').all() as Array<{ name: string }>;
+  const colNames = cols.map(c => c.name);
+
+  if (!colNames.includes('staffExpenseEdit')) {
+    db.exec("ALTER TABLE settings ADD COLUMN staffExpenseEdit INTEGER NOT NULL DEFAULT 0");
+  }
+}
+
+migrateSettingsTable();
+
 // ── Seed data (only if tables are empty — customers are never seeded) ────────
 function seedIfEmpty() {
   const n = (db.prepare('SELECT COUNT(*) as n FROM settings').get() as { n: number }).n;

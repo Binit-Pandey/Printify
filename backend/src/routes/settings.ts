@@ -15,14 +15,26 @@ router.get('/', wrap((_req, res) => {
 }));
 
 router.put('/', wrap((req, res) => {
-  const s = req.body;
+  const existing = db.prepare('SELECT * FROM settings WHERE id=1').get() as Record<string, unknown> | undefined;
+  const s = { ...existing, ...req.body };
+  const row = {
+    name: s.name ?? null,
+    panNumber: s.panNumber ?? null,
+    vatNumber: s.vatNumber ?? null,
+    address: s.address ?? null,
+    contactNumber: s.contactNumber ?? null,
+    email: s.email ?? null,
+    logo: s.logo ?? null,
+    vatRate: s.vatRate ?? null,
+    staffExpenseEdit: s.staffExpenseEdit ? 1 : 0,
+  };
   db.prepare(`
     UPDATE settings SET name=@name, panNumber=@panNumber, vatNumber=@vatNumber,
       address=@address, contactNumber=@contactNumber, email=@email,
-      logo=@logo, vatRate=@vatRate
+      logo=@logo, vatRate=@vatRate, staffExpenseEdit=@staffExpenseEdit
     WHERE id=1
-  `).run(s);
-  res.json(s);
+  `).run(row);
+  res.json(row);
 }));
 
 router.get('/export', wrap((_req, res) => {

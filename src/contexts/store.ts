@@ -9,9 +9,10 @@ interface AppState {
   expenses: Expense[];
   bills: Bill[];
   settings: CompanySettings;
+  canEditOwnExpense: boolean;
   isInitialized: boolean;
 
-  initialize: () => Promise<void>;
+  initialize: (role?: string | null) => Promise<void>;
 
   findOrCreateCustomer: (data: { name: string; phone: string; address?: string; email?: string }) => Promise<Customer>;
   addCustomer: (customer: Customer) => Promise<void>;
@@ -57,13 +58,36 @@ export const useStore = create<AppState>()((set) => ({
   expenses: [],
   bills: [],
   settings: defaultSettings,
+  canEditOwnExpense: false,
   isInitialized: false,
 
-  initialize: async () => {
+  initialize: async (role) => {
     try {
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Initialization timeout')), 5000)
       );
+
+      const isStaff = role === 'staff';
+
+      if (isStaff) {
+        const loadDataPromise = api.expenses.mine();
+        const { expenses, canEditOwn } = await Promise.race([
+          loadDataPromise,
+          timeoutPromise,
+        ]) as { expenses: Expense[]; canEditOwn: boolean };
+
+        set({
+          customers: [],
+          inventory: [],
+          vendors: [],
+          expenses,
+          bills: [],
+          settings: defaultSettings,
+          canEditOwnExpense: canEditOwn,
+          isInitialized: true,
+        });
+        return;
+      }
 
       const loadDataPromise = Promise.all([
         api.customers.list(),
@@ -79,7 +103,7 @@ export const useStore = create<AppState>()((set) => ({
         timeoutPromise,
       ]) as any;
 
-      set({ customers, inventory, vendors, expenses, bills, settings, isInitialized: true });
+      set({ customers, inventory, vendors, expenses, bills, settings, canEditOwnExpense: false, isInitialized: true });
     } catch (error) {
       console.warn('Failed to load data, using defaults:', error);
       set({
@@ -89,6 +113,7 @@ export const useStore = create<AppState>()((set) => ({
         expenses: [],
         bills: [],
         settings: defaultSettings,
+        canEditOwnExpense: false,
         isInitialized: true
       });
     }
@@ -165,12 +190,12 @@ export const useStore = create<AppState>()((set) => ({
 
   // Expenses
   addExpense: async (expense) => {
-    await api.expenses.create(expense);
-    set((s) => ({ expenses: [...s.expenses, expense] }));
+    const created = await api.expenses.create(expense);
+    set((s) => ({ expenses: [...s.expenses, created] }));
   },
   updateExpense: async (expense) => {
-    await api.expenses.update(expense);
-    set((s) => ({ expenses: s.expenses.map((e) => (e.id === expense.id ? expense : e)) }));
+    const updated = await api.expenses.update(expense);
+    set((s) => ({ expenses: s.expenses.map((e) => (e.id === updated.id ? updated : e)) }));
   },
   deleteExpense: async (id) => {
     await api.expenses.remove(id);

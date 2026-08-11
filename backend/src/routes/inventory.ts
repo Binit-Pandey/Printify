@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { wrap } from './wrap';
+import { authenticate, requireAdmin } from '../middleware/auth';
 
 const router = Router();
+
+router.use(authenticate);
+router.use(requireAdmin);
 
 router.get('/', wrap((_req, res) => {
   const rows = db.prepare('SELECT * FROM inventory ORDER BY name').all();

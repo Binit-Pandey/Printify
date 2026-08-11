@@ -84,6 +84,7 @@ export const api = {
 
   expenses: {
     list:   ()              => get<Expense[]>('/expenses'),
+    mine:   ()              => get<{ expenses: Expense[]; canEditOwn: boolean }>('/expenses/mine'),
     create: (e: Expense)    => post<Expense>('/expenses', e),
     update: (e: Expense)    => put<Expense>(`/expenses/${e.id}`, e),
     remove: (id: string)    => del(`/expenses/${id}`),

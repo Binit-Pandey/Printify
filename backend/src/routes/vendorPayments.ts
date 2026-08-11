@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { wrap } from './wrap';
+import { authenticate, requireAdmin } from '../middleware/auth';
 
 const router = Router();
+
+router.use(authenticate);
+router.use(requireAdmin);
 
 router.get('/all', wrap((_req, res) => {
   const rows = db.prepare(`

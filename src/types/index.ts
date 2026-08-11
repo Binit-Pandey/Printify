@@ -57,6 +57,9 @@ export interface Expense {
   reason: string;
   date: string;
   addedBy: string;
+  user_id?: string;
+  receiptName?: string;
+  receiptData?: string;
 }
 
 export interface BillItem {
@@ -93,4 +96,5 @@ export interface CompanySettings {
   email: string;
   logo?: string;
   vatRate?: number;
+  staffExpenseEdit?: boolean;
 }
