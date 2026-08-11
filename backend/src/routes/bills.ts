@@ -1,12 +1,11 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { wrap } from './wrap';
-import { authenticate, requireAdmin } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
 router.use(authenticate);
-router.use(requireAdmin);
 
 const rowToBill = (row: Record<string, unknown>) => ({
   ...row,

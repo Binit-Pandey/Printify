@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings } from '../types';
+import type { Customer, InventoryItem, Vendor, VendorPayment, CustomerPayment, Expense, Bill, CompanySettings } from '../types';
 import { api } from '../services/api';
 
 interface AppState {
@@ -30,6 +30,8 @@ interface AppState {
   addVendorPayment: (payment: VendorPayment) => Promise<void>;
   deleteVendorPayment: (id: string, vendorId: string) => Promise<void>;
   refreshVendor: (id: string) => Promise<void>;
+
+  recordCustomerPayment: (payment: Omit<CustomerPayment, 'id'>) => Promise<void>;
 
   addExpense: (expense: Expense) => Promise<void>;
   updateExpense: (expense: Expense) => Promise<void>;
@@ -70,20 +72,26 @@ export const useStore = create<AppState>()((set) => ({
       const isStaff = role === 'staff';
 
       if (isStaff) {
-        const loadDataPromise = api.expenses.mine();
-        const { expenses, canEditOwn } = await Promise.race([
+        const loadDataPromise = Promise.all([
+          api.expenses.mine(),
+          api.bills.list(),
+          api.inventory.list(),
+          api.vendors.list(),
+          api.settings.get(),
+        ]);
+        const [[expenseRes, bills, inventory, vendors, settings]] = await Promise.race([
           loadDataPromise,
           timeoutPromise,
-        ]) as { expenses: Expense[]; canEditOwn: boolean };
+        ]) as any;
 
         set({
           customers: [],
-          inventory: [],
-          vendors: [],
-          expenses,
-          bills: [],
-          settings: defaultSettings,
-          canEditOwnExpense: canEditOwn,
+          inventory,
+          vendors,
+          expenses: expenseRes.expenses,
+          bills,
+          settings,
+          canEditOwnExpense: expenseRes.canEditOwn,
           isInitialized: true,
         });
         return;
@@ -186,6 +194,12 @@ export const useStore = create<AppState>()((set) => ({
   refreshVendor: async (_id) => {
     const vendors = await api.vendors.list();
     set({ vendors });
+  },
+
+  recordCustomerPayment: async (payment) => {
+    await api.customerPayments.create(payment);
+    const [customers, bills] = await Promise.all([api.customers.list(), api.bills.list()]);
+    set({ customers, bills });
   },
 
   // Expenses

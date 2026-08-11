@@ -1,4 +1,4 @@
-import type { Customer, InventoryItem, Vendor, VendorPayment, Expense, Bill, CompanySettings, User } from '../types';
+import type { Customer, InventoryItem, Vendor, VendorPayment, CustomerPayment, Expense, Bill, CompanySettings, User } from '../types';
 
 const BASE = '/api';
 export const TOKEN_KEY = 'printpress_token';
@@ -82,6 +82,11 @@ export const api = {
     remove: (id: string)       => del(`/vendor-payments/${id}`),
   },
 
+  customerPayments: {
+    list:   (customerId: string) => get<CustomerPayment[]>(`/customer-payments/${customerId}`),
+    create: (p: Omit<CustomerPayment, 'id'>) => post<CustomerPayment>('/customer-payments', p),
+  },
+
   expenses: {
     list:   ()              => get<Expense[]>('/expenses'),
     mine:   ()              => get<{ expenses: Expense[]; canEditOwn: boolean }>('/expenses/mine'),
@@ -120,11 +125,16 @@ export const api = {
       post<{ user: User; token: string }>('/auth/complete-registration', data),
     resendOtp: (email: string) =>
       post<{ message: string }>('/auth/resend-otp', { email }),
+    forgotPassword: (email: string) =>
+      post<{ message: string }>('/auth/forgot-password', { email }),
+    resetPassword: (data: { email: string; code: string; newPassword: string }) =>
+      post<{ message: string }>('/auth/reset-password', data),
   },
 
   staff: {
     list: () => get<{ users: User[] }>('/staff'),
     create: (data: { username: string; fullName: string; email: string; password: string }) =>
       post<{ user: User }>('/staff', data),
+    remove: (id: string) => del(`/staff/${id}`),
   },
 };

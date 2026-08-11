@@ -6,13 +6,15 @@ import { authenticate, requireAdmin } from '../middleware/auth';
 const router = Router();
 
 router.use(authenticate);
-router.use(requireAdmin);
 
 router.get('/', wrap((_req, res) => {
   const row = db.prepare('SELECT * FROM settings WHERE id=1').get();
   if (!row) return res.status(404).json({ error: 'Settings not found' });
   res.json(row);
 }));
+
+// Everything below requires an admin account.
+router.use(requireAdmin);
 
 router.put('/', wrap((req, res) => {
   const existing = db.prepare('SELECT * FROM settings WHERE id=1').get() as Record<string, unknown> | undefined;

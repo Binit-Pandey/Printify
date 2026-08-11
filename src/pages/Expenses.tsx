@@ -7,6 +7,7 @@ import { Plus, Search, Edit2, Trash2, X, TrendingDown } from 'lucide-react';
 import { useFilter } from '../hooks/useFilter';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
+import AccessDenied from './AccessDenied';
 
 const EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Supplies', 'Maintenance', 'Salary', 'Transport', 'Other'];
 
@@ -119,6 +120,10 @@ const Expenses = () => {
     };
     return colors[category] || 'bg-gray-100 text-gray-700';
   };
+
+  if (user?.role !== 'admin' && user?.role !== 'superadmin') {
+    return <AccessDenied />;
+  }
 
   return (
     <div>

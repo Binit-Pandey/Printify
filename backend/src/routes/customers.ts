@@ -6,7 +6,6 @@ import { authenticate, requireAdmin } from '../middleware/auth';
 const router = Router();
 
 router.use(authenticate);
-router.use(requireAdmin);
 
 const LIST_SQL = `
   SELECT
@@ -15,12 +14,19 @@ const LIST_SQL = `
     c.phone,
     c.address,
     c.email,
-    COALESCE(
-      (SELECT SUM(b.grandTotal)
-       FROM   bills b
-       WHERE  json_extract(b.customer, '$.id') = c.id
-         AND  b.status = 'Pending'),
-      0
+    MAX(0,
+      COALESCE(
+        (SELECT SUM(b.grandTotal)
+         FROM   bills b
+         WHERE  json_extract(b.customer, '$.id') = c.id
+           AND  b.status = 'Pending'),
+        0
+      ) - COALESCE(
+        (SELECT SUM(cp.amount)
+         FROM   customer_payments cp
+         WHERE  cp.customerId = c.id),
+        0
+      )
     ) AS outstandingBalance
   FROM customers c
   ORDER BY c.name
@@ -53,6 +59,9 @@ router.post('/find-or-create', wrap((req, res, next) => {
 
   res.status(201).json({ id, name, phone, address: address || '', email: email || null, outstandingBalance: 0 });
 }));
+
+// Everything below requires an admin account.
+router.use(requireAdmin);
 
 router.get('/with-due', wrap((_req, res) => {
   const rows = db.prepare(`

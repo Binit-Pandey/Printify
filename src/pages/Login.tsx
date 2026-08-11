@@ -89,6 +89,7 @@ const Login = () => {
 
           <div className="mt-8 border-t border-slate-200 pt-6 text-center dark:border-slate-800">
             <p className="text-sm text-slate-500 dark:text-slate-400">New here? <Link to="/register" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">Register as Admin</Link></p>
+            <p className="mt-3 text-sm text-slate-500 dark:text-slate-400"><Link to="/forgot-password" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">Forgot password?</Link></p>
             <p className="mt-3 text-xs text-slate-400">Demo username: <span className="font-semibold text-slate-600 dark:text-slate-300">superadmin</span></p>
           </div>
         </div>

@@ -67,6 +67,10 @@ const InvoicePreview = ({ bill, settings }: InvoicePreviewProps) => {
                 <td className="py-1 pr-4 text-gray-500 font-medium">Payment:</td>
                 <td className="py-1 font-semibold">{bill.paymentMethod || 'Cash'}</td>
               </tr>
+              <tr>
+                <td className="py-1 pr-4 text-gray-500 font-medium">Billed by:</td>
+                <td className="py-1 font-semibold">{bill.createdBy || 'Admin'}</td>
+              </tr>
             </tbody>
           </table>
         </div>

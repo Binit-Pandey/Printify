@@ -3,7 +3,7 @@ import { scryptSync, randomBytes, timingSafeEqual, randomInt } from 'crypto';
 import { db } from '../db';
 import { wrap } from './wrap';
 import { createMockToken } from '../middleware/auth';
-import { sendOtpEmail } from '../email';
+import { sendOtpEmail, sendPasswordResetEmail } from '../email';
 
 const mockUsers = [
   { id: '1', username: 'superadmin', role: 'superadmin' as const, name: 'Super Admin', email: 'super@printpress.com' },
@@ -265,6 +265,92 @@ router.post('/login', wrap(async (req, res) => {
   }
 
   res.status(401).json({ error: 'Invalid credentials' });
+}));
+
+// ── Forgot password ─────────────────────────────────────────────────────────
+router.post('/forgot-password', wrap(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    res.status(400).json({ error: 'Email is required' });
+    return;
+  }
+
+  const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id: string } | undefined;
+
+  // Always return the same message whether or not the account exists,
+  // to avoid revealing which emails are registered.
+  if (!user) {
+    res.json({ message: 'If that email is registered, a password reset code has been sent to it.' });
+    return;
+  }
+
+  const code = generateOtp();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+  db.prepare('DELETE FROM password_reset_codes WHERE email = ?').run(email);
+  db.prepare(`
+    INSERT INTO password_reset_codes (email, code, expires_at)
+    VALUES (?, ?, ?)
+  `).run(email, code, expiresAt);
+
+  try {
+    await sendPasswordResetEmail(email, code);
+  } catch (err) {
+    console.error('Failed to send password reset email:', err);
+  }
+
+  res.json({ message: 'If that email is registered, a password reset code has been sent to it.' });
+}));
+
+// ── Reset password ──────────────────────────────────────────────────────────
+router.post('/reset-password', wrap(async (req, res) => {
+  const { email, code, newPassword } = req.body;
+
+  if (!email || !code || !newPassword) {
+    res.status(400).json({ error: 'Email, code, and new password are required' });
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400).json({ error: 'Password must be at least 6 characters' });
+    return;
+  }
+
+  const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as { id: string } | undefined;
+  if (!user) {
+    res.status(400).json({ error: 'Invalid or expired reset code' });
+    return;
+  }
+
+  const record = db.prepare(`
+    SELECT id, code, expires_at FROM password_reset_codes
+    WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1
+  `).get(email) as { id: number; code: string; expires_at: string } | undefined;
+
+  if (!record) {
+    res.status(400).json({ error: 'Invalid or expired reset code' });
+    return;
+  }
+
+  if (new Date(record.expires_at) < new Date()) {
+    db.prepare('UPDATE password_reset_codes SET used = 1 WHERE id = ?').run(record.id);
+    res.status(400).json({ error: 'Reset code expired. Please request a new one.' });
+    return;
+  }
+
+  if (record.code !== code) {
+    res.status(400).json({ error: 'Invalid reset code' });
+    return;
+  }
+
+  const passwordHash = hashPassword(newPassword);
+
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, user.id);
+  db.prepare('UPDATE password_reset_codes SET used = 1 WHERE id = ?').run(record.id);
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+
+  res.json({ message: 'Password reset successfully. Please sign in with your new password.' });
 }));
 
 export default router;

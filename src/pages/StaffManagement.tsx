@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
-import { Users, Plus, X, Eye, EyeOff } from 'lucide-react';
+import { Users, Plus, X, Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { User } from '../types';
+import ConfirmModal from '../components/ConfirmModal';
+import Toast from '../components/Toast';
 
 const StaffManagement = () => {
   const { user } = useAuth();
@@ -16,6 +18,9 @@ const StaffManagement = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     loadStaff();
@@ -49,6 +54,21 @@ const StaffManagement = () => {
       setError(err.message || 'Failed to create staff');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.staff.remove(deleteTarget.id);
+      setStaffList(prev => prev.filter(s => s.id !== deleteTarget.id));
+      setToast(`Staff "${deleteTarget.name}" removed`);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove staff');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -92,6 +112,7 @@ const StaffManagement = () => {
                 <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Full Name</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
                 <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Created</th>
+                <th className="px-6 py-3 w-20"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -101,6 +122,15 @@ const StaffManagement = () => {
                   <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{staff.name}</td>
                   <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">{staff.email}</td>
                   <td className="px-6 py-4 text-sm text-slate-500">{(staff as any).created_at ? new Date((staff as any).created_at).toLocaleDateString() : '-'}</td>
+                  <td className="px-6 py-4">
+                    <button
+                      onClick={() => setDeleteTarget(staff)}
+                      className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl transition-colors"
+                      title="Delete staff"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -196,6 +226,17 @@ const StaffManagement = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title="Delete Staff"
+        message={`Are you sure you want to remove "${deleteTarget?.name}"? Their account and sessions will be deleted. This cannot be undone.`}
+        confirmLabel={deleting ? 'Deleting...' : 'Delete'}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
+
+      {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>
   );
 };

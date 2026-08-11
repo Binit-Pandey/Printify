@@ -6,6 +6,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import Card from '../components/ui/Card';
+import AccessDenied from './AccessDenied';
+import { useAuth } from '../contexts/AuthContext';
 import {
   TrendingUp, TrendingDown, Users, ShoppingCart,
   Download, Calendar, ArrowUpRight, ArrowDownRight
@@ -18,6 +20,7 @@ type DateFilter = 'all' | 'today' | 'thisWeek' | 'thisMonth' | 'thisYear' | 'cus
 const Reports = () => {
   const { bills, expenses, inventory } = useStore();
   const { dark } = useTheme();
+  const { user } = useAuth();
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -185,6 +188,10 @@ const Reports = () => {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  if (user?.role !== 'admin' && user?.role !== 'superadmin') {
+    return <AccessDenied />;
+  }
 
   return (
     <div className="space-y-8">

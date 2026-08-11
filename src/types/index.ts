@@ -50,6 +50,16 @@ export interface VendorPayment {
   dueDate?: string;
 }
 
+export interface CustomerPayment {
+  id: string;
+  customerId: string;
+  billId?: string | null;
+  amount: number;
+  date: string;
+  method: string;
+  note: string;
+}
+
 export interface Expense {
   id: string;
   category: string;

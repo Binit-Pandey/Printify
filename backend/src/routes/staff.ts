@@ -80,4 +80,20 @@ router.post('/', wrap(async (_req: AuthenticatedRequest, res) => {
   res.status(201).json({ user });
 }));
 
+// ── Delete staff user (never admins/superadmins) ────────────────────────────
+router.delete('/:id', wrap(async (_req: AuthenticatedRequest, res) => {
+  const row = db.prepare("SELECT id, role FROM users WHERE id = ?").get(_req.params.id) as { id: string; role: string } | undefined;
+  if (!row) {
+    res.status(404).json({ error: 'Staff not found' });
+    return;
+  }
+  if (row.role !== 'staff') {
+    res.status(403).json({ error: 'Only staff accounts can be removed here' });
+    return;
+  }
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(row.id);
+  res.status(204).send();
+}));
+
 export default router;

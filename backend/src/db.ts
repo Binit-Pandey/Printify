@@ -137,6 +137,25 @@ db.exec(`
     resend_window_start TEXT,
     created_at        TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS password_reset_codes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    email      TEXT NOT NULL,
+    code       TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used       INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_payments (
+    id         TEXT PRIMARY KEY,
+    customerId TEXT NOT NULL,
+    billId     TEXT,
+    amount     REAL NOT NULL,
+    date       TEXT NOT NULL,
+    method     TEXT,
+    note       TEXT NOT NULL DEFAULT ''
+  );
 `);
 
 // ── Migration: add new bill columns if missing ──────────────────────────────

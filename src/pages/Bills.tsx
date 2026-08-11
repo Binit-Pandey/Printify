@@ -1,15 +1,18 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../contexts/store';
-import { Eye, Trash2, CheckCircle2, Clock, Search, Copy, X } from 'lucide-react';
+import { Eye, Trash2, CheckCircle2, Clock, Search, Copy, X, Pencil } from 'lucide-react';
 import { useFilter } from '../hooks/useFilter';
 import InvoicePreview from '../components/InvoicePreview';
+import BillForm from '../components/BillForm';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
+import type { Bill } from '../types';
 
 const Bills = () => {
   const { bills, settings, updateBill, deleteBill, addBill } = useStore();
   const { searchQuery, setSearchQuery, filteredItems } = useFilter(bills, ['billNumber', 'customer.name', 'customer.phone']);
   const [selectedBill, setSelectedBill] = useState<typeof bills[0] | null>(null);
+  const [editingBill, setEditingBill] = useState<typeof bills[0] | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Pending'>('All');
   const [deleteTarget, setDeleteTarget] = useState<typeof bills[0] | null>(null);
   const [toast, setToast] = useState('');
@@ -54,6 +57,22 @@ const Bills = () => {
     };
     addBill(duplicate);
     setToast('Bill duplicated as new invoice');
+  };
+
+  const handleEditSubmit = async (bill: Bill) => {
+    if (!editingBill) return;
+    const updated = {
+      ...bill,
+      id: editingBill.id,
+      billNumber: editingBill.billNumber,
+      createdBy: editingBill.createdBy,
+    };
+    await updateBill(updated);
+    setEditingBill(null);
+    if (selectedBill?.id === editingBill.id) {
+      setSelectedBill(updated);
+    }
+    setToast('Bill updated');
   };
 
   const handlePrint = () => {
@@ -122,7 +141,8 @@ const Bills = () => {
                 <th className="pb-4 font-medium text-right">Amount</th>
                 <th className="pb-4 font-medium">Status</th>
                 <th className="pb-4 font-medium">Payment</th>
-                <th className="pb-4 w-32"></th>
+                <th className="pb-4 font-medium">Created By</th>
+                <th className="pb-4 w-40"></th>
               </tr>
             </thead>
             <tbody className="divide-y dark:divide-gray-800">
@@ -142,11 +162,16 @@ const Bills = () => {
                       </span>
                     </td>
                     <td className="py-5 text-sm text-gray-500">{bill.paymentMethod || 'Cash'}</td>
+                    <td className="py-5 text-sm text-gray-600 dark:text-gray-400">{bill.createdBy || 'Admin'}</td>
                     <td className="py-5">
                       <div className="flex gap-1 justify-end">
                         <button onClick={() => setSelectedBill(bill)}
                           className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors" title="View">
                           <Eye className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setEditingBill(bill)}
+                          className="p-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-xl transition-colors" title="Edit">
+                          <Pencil className="w-4 h-4" />
                         </button>
                         <button onClick={() => handleToggleStatus(bill)}
                           className={`p-2 rounded-xl transition-colors ${bill.status === 'Pending' ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/30' : 'text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/30'}`}
@@ -167,7 +192,7 @@ const Bills = () => {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-10 text-center text-gray-500">No bills found matching your criteria.</td>
+                  <td colSpan={8} className="py-10 text-center text-gray-500">No bills found matching your criteria.</td>
                 </tr>
               )}
             </tbody>
@@ -183,7 +208,7 @@ const Bills = () => {
             <div className="flex justify-between items-center p-6 border-b dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10 rounded-t-3xl no-print">
               <div>
                 <h2 className="text-xl font-bold">{selectedBill.billNumber}</h2>
-                <p className="text-gray-500 text-sm mt-0.5">{new Date(selectedBill.date).toLocaleDateString('en-NP', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                <p className="text-gray-500 text-sm mt-0.5">{new Date(selectedBill.date).toLocaleDateString('en-NP', { year: 'numeric', month: 'long', day: 'numeric' })} · Created by {selectedBill.createdBy || 'Admin'}</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={handlePrint}
@@ -226,6 +251,32 @@ const Bills = () => {
       <ConfirmModal isOpen={!!deleteTarget} title="Delete Invoice"
         message={`Delete invoice ${deleteTarget?.billNumber}? This action cannot be undone.`}
         confirmLabel="Delete" onConfirm={handleDeleteConfirm} onCancel={() => setDeleteTarget(null)} />
+
+      {/* Edit Bill Modal */}
+      {editingBill && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 no-print">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-3xl shadow-2xl border border-gray-100 dark:border-gray-800 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10 rounded-t-3xl">
+              <div>
+                <h2 className="text-xl font-bold">Edit Invoice</h2>
+                <p className="text-gray-500 text-sm mt-0.5">{editingBill.billNumber} · Created by {editingBill.createdBy || 'Admin'}</p>
+              </div>
+              <button onClick={() => setEditingBill(null)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="p-6">
+              <BillForm
+                key={editingBill.id}
+                initialBill={editingBill}
+                submitLabel="Update Invoice"
+                onSubmit={handleEditSubmit}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && <Toast message={toast} onClose={() => setToast('')} />}
     </div>

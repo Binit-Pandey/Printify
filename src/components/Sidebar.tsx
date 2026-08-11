@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, FileText, Users, Package, Truck, Receipt, BarChart3,
-  Settings, Users2, Archive, Clock, LogOut, Printer
+  Settings, Users2, Archive, Clock, LogOut, Printer, PlusCircle
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -13,6 +13,7 @@ interface SidebarProps {
 
 const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: PlusCircle, label: 'Add Expense', path: '/add-expense' },
   { icon: FileText, label: 'Billing', path: '/billing' },
   { icon: Users, label: 'Customers', path: '/customers' },
   { icon: Package, label: 'Inventory', path: '/inventory' },
@@ -32,9 +33,12 @@ const Sidebar = ({ isOpen }: SidebarProps) => {
 
   const filteredMenu = menuItems.filter(item => {
     if (user?.role === 'staff') {
-      return item.label === 'Dashboard';
+      return ['Dashboard', 'Add Expense', 'Billing', 'Inventory', 'Vendors'].includes(item.label);
     }
     if (item.label === 'Staff Management') {
+      return user?.role === 'admin' || user?.role === 'superadmin';
+    }
+    if (item.label === 'Add Expense') {
       return user?.role === 'admin' || user?.role === 'superadmin';
     }
     return !['Backup', 'Audit Logs'].includes(item.label);
