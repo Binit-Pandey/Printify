@@ -1,7 +1,31 @@
 import Database from 'better-sqlite3';
 import { join } from 'path';
+import { closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, statSync } from 'fs';
+import { dirname } from 'path';
 
 const dbPath = join(__dirname, '../../data/printing.db');
+mkdirSync(dirname(dbPath), { recursive: true });
+
+// Self-heal: SQLite silently treats a missing or headerless file as a fresh
+// empty database, which would discard all data and break the app. Detect a
+// corrupt/truncated DB file and rebuild it from scratch instead.
+function dbFileIsCorrupt(): boolean {
+  if (!existsSync(dbPath)) return false;
+  const size = statSync(dbPath).size;
+  if (size === 0) return true;
+  const fd = openSync(dbPath, 'r');
+  const header = Buffer.alloc(16);
+  readSync(fd, header, 0, 16, 0);
+  closeSync(fd);
+  return header.toString('utf8') !== 'SQLite format 3\0';
+}
+
+if (dbFileIsCorrupt()) {
+  const backup = `${dbPath}.corrupt-${Date.now()}`;
+  console.warn(`⚠️ Database file is corrupt — backing it up to ${backup} and rebuilding.`);
+  renameSync(dbPath, backup);
+}
+
 export const db = new Database(dbPath);
 
 // Enable WAL mode for better performance
