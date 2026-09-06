@@ -132,6 +132,29 @@ html.dark * {
     border-radius: 0 !important;
   }
 
+  /* Named pages: A4 stays the default; A5 and 80mm thermal get their own paper
+     size via the `page` CSS property assigned to the invoice element. */
+  #invoice-print.invoice-format-a5 {
+    page: a5;
+    zoom: 0.68;
+  }
+
+  #invoice-print.invoice-format-thermal {
+    page: thermal;
+    width: 80mm !important;
+    max-width: 80mm !important;
+  }
+
+  @page a5 {
+    size: A5;
+    margin: 8mm;
+  }
+
+  @page thermal {
+    size: 80mm auto;
+    margin: 0;
+  }
+
   @page {
     size: A4;
     margin: 10mm;
@@ -162,4 +185,15 @@ html.dark * {
   html {
     scrollbar-width: none;
   }
+}
+
+/* ── Invoice preview sizing (screen only, non-print) ──────────────────────── */
+.invoice-preview-a5 {
+  max-width: 460px;
+  margin-inline: auto;
+}
+
+.invoice-preview-thermal {
+  max-width: 300px;
+  margin-inline: auto;
 }

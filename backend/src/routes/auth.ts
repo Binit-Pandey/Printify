@@ -257,7 +257,11 @@ router.post('/login', wrap(async (req, res) => {
     return;
   }
 
-  const mockUser = mockUsers.find(u => u.username === username);
+  // Hard-coded demo accounts are ONLY available in development (Electron runs
+  // the backend with NODE_ENV=production, where a real seeded admin account in
+  // the `users` table is required instead).
+  const allowMockUsers = process.env.NODE_ENV !== 'production';
+  const mockUser = allowMockUsers ? mockUsers.find(u => u.username === username) : undefined;
   if (mockUser && password === 'admin123') {
     const token = createMockToken(mockUser);
     res.json({ user: { ...mockUser, company_name: undefined, full_name: mockUser.name }, token });

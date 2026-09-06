@@ -66,7 +66,7 @@ const Login = () => {
               <label htmlFor="username" className="text-sm font-semibold">Username or email</label>
               <div className="relative">
                 <Mail aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <input id="username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-600/10 dark:border-slate-800 dark:bg-slate-900" placeholder="superadmin" required />
+                <input id="username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm shadow-sm transition-colors placeholder:text-slate-400 focus:border-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-600/10 dark:border-slate-800 dark:bg-slate-900" placeholder="Enter your username" required />
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -90,7 +90,7 @@ const Login = () => {
           <div className="mt-8 border-t border-slate-200 pt-6 text-center dark:border-slate-800">
             <p className="text-sm text-slate-500 dark:text-slate-400">New here? <Link to="/register" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">Register as Admin</Link></p>
             <p className="mt-3 text-sm text-slate-500 dark:text-slate-400"><Link to="/forgot-password" className="font-semibold text-blue-600 hover:underline dark:text-blue-400">Forgot password?</Link></p>
-            <p className="mt-3 text-xs text-slate-400">Demo username: <span className="font-semibold text-slate-600 dark:text-slate-300">superadmin</span></p>
+            
           </div>
         </div>
       </section>

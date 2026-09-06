@@ -110,8 +110,32 @@ export const api = {
       return settings as CompanySettings;
     },
     update: (s: CompanySettings) => put<CompanySettings>('/settings', s),
+    testEmail: (to: string) => post<{ message: string }>('/settings/test-email', { to }),
     exportData: () => get<any>('/settings/export'),
     importData: (data: any) => post<any>('/settings/import', data),
+    downloadDbBackup: async () => {
+      const res = await fetch(`${BASE}/settings/db-backup`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAuthToken() ?? ''}` },
+      });
+      if (!res.ok) throw new Error(`Database backup failed (${res.status})`);
+      return res.blob();
+    },
+    restoreDb: async (file: Blob) => {
+      const res = await fetch(`${BASE}/settings/db-restore`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${getAuthToken() ?? ''}`,
+          'Content-Type': 'application/octet-stream',
+        },
+        body: file,
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        throw new Error(`Database restore failed (${res.status}): ${text}`);
+      }
+      return res.json();
+    },
   },
 
   auth: {

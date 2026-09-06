@@ -1,40 +1,141 @@
 {
   "name": "printing-press-erp",
+  "version": "1.0.0",
+  "description": "PrintPress ERP — a desktop ERP for printing businesses (Electron + React + Express + SQLite).",
+  "desktopName": "printing-press-erp",
   "private": true,
-  "version": "0.0.0",
   "type": "module",
+  "main": "dist-electron/main.js",
+  "author": "PrintPress ERP",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n backend,vite -c blue,green \"npm:dev:backend\" \"npm:dev:vite\"",
+    "dev:backend": "tsx watch backend/src/index.ts",
+    "dev:vite": "vite",
     "build": "tsc -b && vite build",
+    "build:backend": "tsc -p backend/tsconfig.json",
+    "build:electron": "tsc -p electron/tsconfig.json && node -e \"require('fs').writeFileSync('dist-electron/package.json', JSON.stringify({ type: 'commonjs' }, null, 2))\"",
+    "build:all": "npm run icons && npm run build && npm run build:backend && npm run build:electron",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "icons": "node scripts/generate-icons.cjs && node scripts/generate-ico.cjs",
+    "electron:dev": "npm run build:electron && concurrently -k -n backend,vite,app -c blue,green,magenta \"npm:dev:backend\" \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:electron": "wait-on tcp:127.0.0.1:3001 tcp:127.0.0.1:5000 && cross-env VITE_DEV_SERVER_URL=http://localhost:5000 electron .",
+    "electron:pack": "npm run build:all && npm run electron:rebuild && electron-builder --dir && npm run electron:restore",
+    "electron:build": "npm run build:all && npm run electron:rebuild && electron-builder && npm run electron:restore",
+    "electron:rebuild": "electron-rebuild -f -m .",
+    "electron:restore": "npm rebuild better-sqlite3"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "nodemailer": "^9.0.4",
+    "resend": "^6.18.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "@hookform/resolvers": "^5.4.0",
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^24.13.2",
+    "@types/nodemailer": "^8.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "autoprefixer": "^10.5.2",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "framer-motion": "^12.42.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.23.0",
+    "oxlint": "^1.71.0",
+    "pngjs": "^7.0.0",
+    "postcss": "^8.5.16",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-hook-form": "^7.81.0",
     "react-router-dom": "^7.18.1",
     "recharts": "^3.9.2",
+    "tailwindcss": "^4.3.2",
+    "terser": "^5.49.0",
+    "tsx": "^4.20.6",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1",
+    "wait-on": "^8.0.4",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.2",
-    "@types/node": "^24.13.2",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.3",
-    "autoprefixer": "^10.5.2",
-    "oxlint": "^1.71.0",
-    "postcss": "^8.5.16",
-    "tailwindcss": "^4.3.2",
-    "terser": "^5.49.0",
-    "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+  "build": {
+    "appId": "com.printpress.erp",
+    "productName": "PrintPress ERP",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "backend/dist/**/*",
+      "backend/package.json",
+      "build/icon.png",
+      "!attached_assets/**/*",
+      "!data/**/*",
+      "!src/**/*",
+      "!backend/src/**/*",
+      "!electron/**/*",
+      "!scripts/**/*",
+      "!docs/**/*",
+      "!*.md",
+      "!**/*.map",
+      "!**/*.test.*",
+      "!**/*.spec.*",
+      "!**/*.ts",
+      "!**/*.tsx",
+      "!**/*.twoslash"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "PrintPress-ERP-Setup-${version}.exe"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Office",
+      "maintainer": "PrintPress ERP",
+      "synopsis": "Desktop ERP for printing businesses",
+      "description": "PrintPress ERP — desktop ERP for printing businesses.",
+      "artifactName": "PrintPress-ERP-${version}.${ext}",
+      "syncDesktopName": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.business"
+    }
   }
 }

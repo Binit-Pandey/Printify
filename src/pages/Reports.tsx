@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../contexts/store';
 import { useTheme } from '../contexts/ThemeContext';
+import { api } from '../services/api';
+import type { VendorPayment } from '../types';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
@@ -24,6 +26,11 @@ const Reports = () => {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [vendorPayments, setVendorPayments] = useState<VendorPayment[]>([]);
+
+  useEffect(() => {
+    api.vendorPayments.listAll().then(setVendorPayments).catch(() => setVendorPayments([]));
+  }, []);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -56,10 +63,17 @@ const Reports = () => {
     return expenses.filter(e => e.date >= dateRange.start && e.date <= dateRange.end);
   }, [expenses, dateRange]);
 
+  // Purchases from vendors (type === 'purchase') are treated as investment: the
+  // cost of materials/stock acquired, deducted from revenue to show real profit.
+  const filteredInvestments = useMemo(() => {
+    return vendorPayments.filter(p => p.type === 'purchase' && p.date >= dateRange.start && p.date <= dateRange.end);
+  }, [vendorPayments, dateRange]);
+
   const reportData = useMemo(() => {
     // Monthly revenue trend (last 12 months)
     const monthlyRevData: Record<string, number> = {};
     const monthlyExpData: Record<string, number> = {};
+    const monthlyPurchaseData: Record<string, number> = {};
     bills.forEach(bill => {
       const month = bill.date.substring(0, 7);
       monthlyRevData[month] = (monthlyRevData[month] || 0) + bill.grandTotal;
@@ -68,13 +82,18 @@ const Reports = () => {
       const month = exp.date.substring(0, 7);
       monthlyExpData[month] = (monthlyExpData[month] || 0) + exp.amount;
     });
+    vendorPayments.filter(p => p.type === 'purchase').forEach(p => {
+      const month = p.date.substring(0, 7);
+      monthlyPurchaseData[month] = (monthlyPurchaseData[month] || 0) + p.amount;
+    });
 
-    const allMonths = [...new Set([...Object.keys(monthlyRevData), ...Object.keys(monthlyExpData)])].sort();
+    const allMonths = [...new Set([...Object.keys(monthlyRevData), ...Object.keys(monthlyExpData), ...Object.keys(monthlyPurchaseData)])].sort();
     const profitOverTime = allMonths.slice(-12).map(month => ({
       month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
       revenue: monthlyRevData[month] || 0,
       expenses: monthlyExpData[month] || 0,
-      profit: (monthlyRevData[month] || 0) - (monthlyExpData[month] || 0),
+      purchases: monthlyPurchaseData[month] || 0,
+      profit: (monthlyRevData[month] || 0) - (monthlyExpData[month] || 0) - (monthlyPurchaseData[month] || 0),
     }));
 
     // Daily sales for current month
@@ -133,7 +152,9 @@ const Reports = () => {
     // Key metrics (filtered)
     const totalRevenue = filteredBills.reduce((sum, b) => sum + b.grandTotal, 0);
     const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-    const profit = totalRevenue - totalExpenses;
+    const totalInvestment = filteredInvestments.reduce((sum, p) => sum + p.amount, 0);
+    const totalCosts = totalExpenses + totalInvestment;
+    const profit = totalRevenue - totalExpenses - totalInvestment;
     const paidBills = filteredBills.filter(b => b.status === 'Paid').length;
     const totalBills = filteredBills.length;
     const collectionRate = totalBills > 0 ? (paidBills / totalBills) * 100 : 0;
@@ -148,6 +169,8 @@ const Reports = () => {
     const lastMonthRevenue = bills.filter(b => b.date.startsWith(lastMonth)).reduce((s, b) => s + b.grandTotal, 0);
     const thisMonthExpenses = expenses.filter(e => e.date.startsWith(thisMonth)).reduce((s, e) => s + e.amount, 0);
     const lastMonthExpenses = expenses.filter(e => e.date.startsWith(lastMonth)).reduce((s, e) => s + e.amount, 0);
+    const thisMonthInvestment = vendorPayments.filter(p => p.type === 'purchase' && p.date.startsWith(thisMonth)).reduce((s, p) => s + p.amount, 0);
+    const lastMonthInvestment = vendorPayments.filter(p => p.type === 'purchase' && p.date.startsWith(lastMonth)).reduce((s, p) => s + p.amount, 0);
 
     const revenueChange = lastMonthRevenue > 0 ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100 : 0;
     const expenseChange = lastMonthExpenses > 0 ? ((thisMonthExpenses - lastMonthExpenses) / lastMonthExpenses) * 100 : 0;
@@ -155,17 +178,18 @@ const Reports = () => {
     return {
       profitOverTime, dailySales, topServices, customerSalesList,
       inventoryValue, lowStockValue, expenseBreakdown,
-      totalRevenue, totalExpenses, profit, paidBills, totalBills, collectionRate,
-      thisMonthRevenue, lastMonthRevenue, thisMonthExpenses, lastMonthExpenses,
+      totalRevenue, totalExpenses, totalInvestment, totalCosts, profit, paidBills, totalBills, collectionRate,
+      thisMonthRevenue, lastMonthRevenue, thisMonthExpenses, lastMonthExpenses, thisMonthInvestment, lastMonthInvestment,
       revenueChange, expenseChange,
     };
-  }, [bills, expenses, inventory, filteredBills, filteredExpenses]);
+  }, [bills, expenses, inventory, filteredBills, filteredExpenses, vendorPayments, filteredInvestments]);
 
   const exportCSV = () => {
     const rows = [
       ['Metric', 'Value'],
       ['Total Revenue', `NPR ${reportData.totalRevenue.toLocaleString()}`],
       ['Total Expenses', `NPR ${reportData.totalExpenses.toLocaleString()}`],
+      ['Total Purchases (Investment)', `NPR ${reportData.totalInvestment.toLocaleString()}`],
       ['Net Profit', `NPR ${reportData.profit.toLocaleString()}`],
       ['Collection Rate', `${reportData.collectionRate.toFixed(1)}%`],
       ['Total Bills', `${reportData.totalBills}`],
@@ -253,14 +277,17 @@ const Reports = () => {
         <Card>
           <div className="flex justify-between items-start">
             <div>
-              <div className="text-sm font-bold uppercase tracking-wider text-gray-400">Total Expenses</div>
-              <div className="text-3xl font-black mt-3 text-red-600">NPR {reportData.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+              <div className="text-sm font-bold uppercase tracking-wider text-gray-400">Total Costs</div>
+              <div className="text-3xl font-black mt-3 text-red-600">NPR {reportData.totalCosts.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
               <div className="flex items-center gap-1 mt-2">
                 {reportData.expenseChange <= 0 ? <ArrowDownRight className="w-4 h-4 text-emerald-500" /> : <ArrowUpRight className="w-4 h-4 text-red-500" />}
                 <span className={`text-xs font-bold ${reportData.expenseChange <= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                   {Math.abs(reportData.expenseChange).toFixed(1)}% vs last month
                 </span>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Expenses NPR {reportData.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 0 })} · Purchases NPR {reportData.totalInvestment.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
             </div>
             <TrendingDown className="w-8 h-8 text-red-600 opacity-20" />
           </div>
@@ -314,16 +341,18 @@ const Reports = () => {
         <Card>
           <div className="flex items-center gap-2 mb-4">
             <Calendar className="w-5 h-5 text-red-600" />
-            <h3 className="text-lg font-bold">Expense Comparison</h3>
+            <h3 className="text-lg font-bold">Cost Comparison</h3>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-red-50 dark:bg-red-900/20 rounded-2xl p-4">
               <p className="text-xs font-bold uppercase text-red-600">This Month</p>
-              <p className="text-2xl font-black mt-1 text-red-600">NPR {reportData.thisMonthExpenses.toLocaleString()}</p>
+              <p className="text-2xl font-black mt-1 text-red-600">NPR {(reportData.thisMonthExpenses + reportData.thisMonthInvestment).toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-1">Expenses NPR {reportData.thisMonthExpenses.toLocaleString()} · Purchases NPR {reportData.thisMonthInvestment.toLocaleString()}</p>
             </div>
             <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4">
               <p className="text-xs font-bold uppercase text-gray-500">Last Month</p>
-              <p className="text-2xl font-black mt-1">NPR {reportData.lastMonthExpenses.toLocaleString()}</p>
+              <p className="text-2xl font-black mt-1">NPR {(reportData.lastMonthExpenses + reportData.lastMonthInvestment).toLocaleString()}</p>
+              <p className="text-xs text-gray-500 mt-1">Expenses NPR {reportData.lastMonthExpenses.toLocaleString()} · Purchases NPR {reportData.lastMonthInvestment.toLocaleString()}</p>
             </div>
           </div>
         </Card>
@@ -346,6 +375,7 @@ const Reports = () => {
               <Legend />
               <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={3} dot={{fill: '#3b82f6', r: 4}} name="Revenue" />
               <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={3} dot={{fill: '#ef4444', r: 4}} name="Expenses" />
+              <Line type="monotone" dataKey="purchases" stroke="#8b5cf6" strokeWidth={3} dot={{fill: '#8b5cf6', r: 4}} name="Purchases (Investment)" />
               <Line type="monotone" dataKey="profit" stroke="#10b981" strokeWidth={3} dot={{fill: '#10b981', r: 4}} name="Profit" strokeDasharray="5 5" />
             </LineChart>
           </ResponsiveContainer>

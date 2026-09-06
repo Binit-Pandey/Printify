@@ -1,25 +1,88 @@
 import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
+import { db } from './db';
 
-const smtpHost = process.env.SMTP_HOST_2 || process.env.SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = Number(process.env.SMTP_PORT || 587);
-const smtpSecure = process.env.SMTP_SECURE === 'true';
-const smtpUser = process.env.SMTP_USER_2 || process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS_2 || process.env.SMTP_PASS;
-const smtpFrom = process.env.SMTP_FROM || smtpUser;
+// SMTP is configurable in-app (Settings → Email/SMTP, stored in the settings
+// table) and overridable via environment variables. The database config takes
+// precedence, then env vars, then the transport is left unconfigured (the
+// verification/reset emails fall back to a console log so development still
+// works without an SMTP server).
 
-const hasSmtpCredentials = Boolean(smtpUser && smtpPass);
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}
 
-const transporter = hasSmtpCredentials
-  ? nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure,
-      auth: {
-        user: smtpUser!,
-        pass: smtpPass!,
-      },
-    })
-  : null;
+function envSmtpConfig(): SmtpConfig | null {
+  const user = process.env.SMTP_USER_2 || process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS_2 || process.env.SMTP_PASS;
+  if (!user || !pass) return null;
+  return {
+    host: process.env.SMTP_HOST_2 || process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === 'true',
+    user,
+    pass,
+    from: process.env.SMTP_FROM || user,
+  };
+}
+
+function dbSmtpConfig(): SmtpConfig | null {
+  const row = db.prepare(`
+    SELECT smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, smtpFrom
+    FROM settings WHERE id = 1
+  `).get() as {
+    smtpHost: string | null;
+    smtpPort: number | null;
+    smtpSecure: number | null;
+    smtpUser: string | null;
+    smtpPass: string | null;
+    smtpFrom: string | null;
+  } | undefined;
+
+  if (!row || !row.smtpUser || !row.smtpPass) return null;
+  return {
+    host: row.smtpHost || 'smtp.gmail.com',
+    port: row.smtpPort || 587,
+    secure: !!row.smtpSecure,
+    user: row.smtpUser,
+    pass: row.smtpPass,
+    from: row.smtpFrom || row.smtpUser,
+  };
+}
+
+export function getSmtpConfig(): SmtpConfig | null {
+  return dbSmtpConfig() ?? envSmtpConfig();
+}
+
+// The transport is re-created only when the effective config changes, so a
+// "Save" in Settings takes effect immediately without a restart.
+let cachedConfigKey = '';
+let cachedTransporter: Transporter | null = null;
+
+function getTransporter(config: SmtpConfig): Transporter {
+  const key = `${config.host}|${config.port}|${config.secure}|${config.user}|${config.pass}|${config.from}`;
+  if (cachedTransporter && cachedConfigKey === key) return cachedTransporter;
+  cachedTransporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: { user: config.user, pass: config.pass },
+  });
+  cachedConfigKey = key;
+  return cachedTransporter;
+}
+
+export async function sendMail(to: string, subject: string, text: string, html: string): Promise<{ delivered: boolean }> {
+  const config = getSmtpConfig();
+  if (!config) return { delivered: false };
+  await getTransporter(config).sendMail({ from: config.from, to, subject, text, html });
+  return { delivered: true };
+}
 
 export async function sendOtpEmail(to: string, code: string): Promise<void> {
   const subject = 'Your Prime Printify verification code';
@@ -61,18 +124,10 @@ export async function sendOtpEmail(to: string, code: string): Promise<void> {
     </div>
   `;
 
-  if (!transporter || !smtpFrom) {
-    console.log(`📧 [OTP] Email to ${to}: ${code}`);
-    return;
+  const delivered = await sendMail(to, subject, text, html);
+  if (!delivered.delivered) {
+    console.log(`📧 [OTP] Email to ${to}: ${code} (SMTP not configured — set it up in Settings → Email & SMTP)`);
   }
-
-  await transporter.sendMail({
-    from: smtpFrom,
-    to,
-    subject,
-    text,
-    html,
-  });
 }
 
 export async function sendPasswordResetEmail(to: string, code: string): Promise<void> {
@@ -115,16 +170,35 @@ export async function sendPasswordResetEmail(to: string, code: string): Promise<
     </div>
   `;
 
-  if (!transporter || !smtpFrom) {
-    console.log(`📧 [RESET] Email to ${to}: ${code}`);
-    return;
+  const delivered = await sendMail(to, subject, text, html);
+  if (!delivered.delivered) {
+    console.log(`📧 [RESET] Email to ${to}: ${code} (SMTP not configured — set it up in Settings → Email & SMTP)`);
   }
+}
 
-  await transporter.sendMail({
-    from: smtpFrom,
+export async function sendTestEmail(to: string): Promise<void> {
+  const delivered = await sendMail(
     to,
-    subject,
-    text,
-    html,
-  });
+    'Prime Printify — SMTP test',
+    `Hello,\n\nThis is a test email confirming that your SMTP settings work.\n\n— Prime Printify`,
+    `<div style="margin:0;padding:0;background-color:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+      <div style="max-width:520px;margin:0 auto;padding:32px 16px;">
+        <div style="text-align:center;padding:16px 0 24px;">
+          <div style="font-size:20px;font-weight:700;letter-spacing:1px;color:#111827;">PRIME PRINTIFY</div>
+        </div>
+        <div style="background-color:#ffffff;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+          <h1 style="font-size:20px;font-weight:600;color:#111827;margin:0 0 8px;">SMTP test successful</h1>
+          <p style="font-size:14px;line-height:1.6;color:#4b5563;margin:0;">
+            This email was sent with the SMTP settings configured in PrintPress ERP.
+          </p>
+        </div>
+        <div style="text-align:center;padding:24px 0 0;font-size:12px;color:#9ca3af;">
+          &copy; ${new Date().getFullYear()} Prime Printify. All rights reserved.
+        </div>
+      </div>
+    </div>`,
+  );
+  if (!delivered.delivered) {
+    throw new Error('SMTP is not configured. Fill in the SMTP details in Settings → Email & SMTP first, then try again.');
+  }
 }

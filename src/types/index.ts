@@ -107,4 +107,10 @@ export interface CompanySettings {
   logo?: string;
   vatRate?: number;
   staffExpenseEdit?: boolean;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+  smtpFrom?: string;
 }

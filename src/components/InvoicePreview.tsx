@@ -1,17 +1,127 @@
 import type { Bill, CompanySettings } from '../types';
 import { numberToWords } from '../utils/numberToWords';
 
+export type InvoiceFormat = 'a4' | 'a5' | 'thermal';
+
 interface InvoicePreviewProps {
   bill: Bill;
   settings: CompanySettings;
+  format?: InvoiceFormat;
 }
 
-const InvoicePreview = ({ bill, settings }: InvoicePreviewProps) => {
+const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+const ThermalReceipt = ({ bill, settings }: { bill: Bill; settings: CompanySettings }) => {
   const vatRate = settings.vatRate ?? 13;
   const amountInWords = numberToWords(bill.grandTotal);
 
   return (
-    <div id="invoice-print" className="bg-white text-gray-900 w-full" style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }}>
+    <div id="invoice-print" className="invoice-format-thermal bg-white text-gray-900" style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", width: '80mm', margin: '0 auto', padding: '2mm 3mm' }}>
+      {/* Company Header */}
+      <div className="text-center border-b-2 border-blue-600 pb-2 mb-2">
+        <h1 className="text-sm font-black tracking-wide text-blue-600 uppercase leading-tight">{settings.name || 'Company Name'}</h1>
+        {settings.address && <p className="text-[9px] text-gray-600 mt-0.5">{settings.address}</p>}
+        <div className="text-[9px] text-gray-600 mt-0.5">
+          {settings.contactNumber && <span>Ph: {settings.contactNumber}</span>}
+          {settings.email && <span> | {settings.email}</span>}
+        </div>
+        <div className="text-[9px] text-gray-600">
+          {settings.panNumber && <span>PAN: {settings.panNumber}</span>}
+          {settings.vatNumber && <span> | VAT: {settings.vatNumber}</span>}
+        </div>
+        <div className="inline-block bg-blue-600 text-white text-[10px] font-black tracking-widest px-2 py-0.5 rounded-sm mt-1">TAX INVOICE</div>
+      </div>
+
+      {/* Invoice Meta */}
+      <div className="text-[10px] mb-2 space-y-0.5">
+        <div className="flex justify-between"><span className="text-gray-500">Bill No:</span><span className="font-bold">{bill.billNumber}</span></div>
+        <div className="flex justify-between"><span className="text-gray-500">Date:</span><span className="font-bold">{new Date(bill.date).toLocaleDateString('en-NP', { year: 'numeric', month: 'short', day: 'numeric' })}</span></div>
+        <div className="flex justify-between"><span className="text-gray-500">Status:</span><span className={`font-bold ${bill.status === 'Paid' ? 'text-emerald-600' : 'text-orange-500'}`}>{bill.status}</span></div>
+        <div className="flex justify-between"><span className="text-gray-500">Payment:</span><span className="font-bold">{bill.paymentMethod || 'Cash'}</span></div>
+        <div className="flex justify-between"><span className="text-gray-500">Billed by:</span><span className="font-bold">{bill.createdBy || 'Admin'}</span></div>
+        <div className="flex justify-between"><span className="text-gray-500">Customer:</span><span className="font-bold">{bill.customer.name}</span></div>
+        {(bill.customer.phone || bill.customer.address) && <div className="text-[9px] text-gray-600">{bill.customer.phone}{bill.customer.phone && bill.customer.address ? ', ' : ''}{bill.customer.address}</div>}
+        {bill.customer.email && <div className="text-[9px] text-gray-600">{bill.customer.email}</div>}
+      </div>
+
+      {/* Items */}
+      <table className="w-full text-[10px] mb-2" style={{ borderCollapse: 'collapse' }}>
+        <thead>
+          <tr className="bg-blue-600 text-white">
+            <th className="py-0.5 px-1 text-left font-bold" style={{ width: '5%' }}>#</th>
+            <th className="py-0.5 px-1 text-left font-bold" style={{ width: '52%' }}>Description</th>
+            <th className="py-0.5 px-1 text-right font-bold" style={{ width: '16%' }}>Qty×Rate</th>
+            <th className="py-0.5 px-1 text-right font-bold" style={{ width: '27%' }}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bill.items.map((item, index) => {
+            const lineTotal = item.quantity * item.unitPrice * (1 - item.discount / 100);
+            return (
+              <tr key={item.id} className="align-top border-b border-gray-100">
+                <td className="px-1 py-0.5 font-bold">{index + 1}</td>
+                <td className="px-1 py-0.5 font-bold leading-tight">{item.name}</td>
+                <td className="px-1 py-0.5 text-right">{item.quantity} × {fmt(item.unitPrice)}</td>
+                <td className="px-1 py-0.5 text-right font-bold">NPR {fmt(lineTotal)}</td>
+              </tr>
+            );
+          })}
+          {bill.items.length === 0 && (
+            <tr><td colSpan={4} className="py-3 text-center text-gray-400 text-[10px]">No items</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Amount in Words */}
+      <div className="text-[9px] text-gray-700 mb-2">
+        <span className="text-gray-400 font-bold uppercase">In words: </span>{amountInWords}
+      </div>
+
+      {/* Totals */}
+      <div className="text-[10px] space-y-0.5 mb-2">
+        <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-bold">NPR {fmt(bill.subtotal)}</span></div>
+        {bill.discount > 0 && (
+          <div className="flex justify-between">
+            <span className="text-gray-500">Discount {bill.discountType === 'percentage' ? `(${bill.discount}%)` : ''}</span>
+            <span className="font-bold text-red-600">- NPR {fmt(bill.discountType === 'percentage' ? bill.subtotal * bill.discount / 100 : bill.discount)}</span>
+          </div>
+        )}
+        <div className="flex justify-between"><span className="text-gray-500">VAT ({vatRate}%)</span><span className="font-bold">NPR {fmt(bill.vat)}</span></div>
+      </div>
+      <div className="bg-blue-600 text-white text-[11px] font-black px-2 py-1 mb-2 flex justify-between rounded-sm">
+        <span>GRAND TOTAL (NPR)</span>
+        <span>{fmt(bill.grandTotal)}</span>
+      </div>
+
+      {/* Notes */}
+      {bill.notes && (
+        <div className="text-[9px] text-gray-600 mb-2">
+          <span className="font-bold text-gray-400 uppercase">Notes: </span>{bill.notes}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="text-center border-t border-dashed border-gray-300 pt-1 mt-1">
+        <p className="text-[9px] text-gray-500">Thank you for your business!</p>
+        <p className="text-[9px] font-bold text-gray-600 mt-1">{settings.name}</p>
+        <div className="border-t border-gray-300 w-24 mx-auto mt-1"></div>
+        <p className="text-[8px] text-gray-500">Authorized Signature</p>
+        <p className="text-[8px] text-gray-400 mt-1">Powered by Prime Logic Tech</p>
+      </div>
+    </div>
+  );
+};
+
+const InvoicePreview = ({ bill, settings, format = 'a4' }: InvoicePreviewProps) => {
+  const vatRate = settings.vatRate ?? 13;
+  const amountInWords = numberToWords(bill.grandTotal);
+
+  if (format === 'thermal') {
+    return <ThermalReceipt bill={bill} settings={settings} />;
+  }
+
+  return (
+    <div id="invoice-print" className={`invoice-format-${format} bg-white text-gray-900 w-full`} style={{ fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif" }}>
       {/* Company Header */}
       <div className="border-b-2 border-blue-600 pb-4 mb-6">
         <div className="flex justify-between items-start">

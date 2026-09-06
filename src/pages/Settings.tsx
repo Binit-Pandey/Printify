@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../contexts/store';
 import { useTheme } from '../contexts/ThemeContext';
-import { Save, AlertCircle, Sun, Moon, Upload, Download, Image } from 'lucide-react';
+import { Save, AlertCircle, Sun, Moon, Upload, Download, Database, Image, Send } from 'lucide-react';
 import { api } from '../services/api';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
@@ -21,7 +21,10 @@ const Settings = () => {
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   const [importConfirm, setImportConfirm] = useState(false);
   const [pendingImport, setPendingImport] = useState<any>(null);
+  const [dbRestoreConfirm, setDbRestoreConfirm] = useState(false);
+  const [pendingDbRestore, setPendingDbRestore] = useState<Blob | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dbFileInputRef = useRef<HTMLInputElement>(null);
 
   const validate = (): boolean => {
     const errors: Record<string, string> = {};
@@ -114,6 +117,74 @@ const Settings = () => {
       setToast('Failed to import data');
     }
   };
+
+  const handleDbBackup = async () => {
+    try {
+      const blob = await api.settings.downloadDbBackup();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `printpress-db-backup-${new Date().toISOString().split('T')[0]}.db`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setToastType('success');
+      setToast('Database backup downloaded');
+    } catch {
+      setToastType('error');
+      setToast('Failed to create database backup');
+    }
+  };
+
+  const handleDbRestoreClick = () => {
+    dbFileInputRef.current?.click();
+  };
+
+  const handleDbFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingDbRestore(file);
+    setDbRestoreConfirm(true);
+    e.target.value = '';
+  };
+
+  const handleDbRestoreConfirm = async () => {
+    if (!pendingDbRestore) return;
+    try {
+      await api.settings.restoreDb(pendingDbRestore);
+      setDbRestoreConfirm(false);
+      setPendingDbRestore(null);
+      setToastType('success');
+      setToast('Database restored successfully. Page will refresh.');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch {
+      setDbRestoreConfirm(false);
+      setPendingDbRestore(null);
+      setToastType('error');
+      setToast('Failed to restore database');
+    }
+  };
+
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+
+  const handleTestEmail = async () => {
+    if (!testEmailTo.trim()) return;
+    setIsTestingEmail(true);
+    try {
+      const res = await api.settings.testEmail(testEmailTo.trim());
+      setToastType('success');
+      setToast(res.message || 'Test email sent successfully');
+    } catch (e: any) {
+      const raw = e?.message || 'Failed to send test email';
+      const parsed = raw.match(/\{"error":"((?:[^"\\]|\\.)*)"\}/);
+      setToastType('error');
+      setToast(parsed ? parsed[1] : raw);
+    } finally {
+      setIsTestingEmail(false);
+    }
+  };
+
+  const smtpConfigured = Boolean(formData.smtpUser && formData.smtpPass);
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -266,6 +337,117 @@ const Settings = () => {
         </div>
       </div>
 
+      {/* Email (SMTP) */}
+      <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
+        <h2 className="text-2xl font-bold mb-2">Email (SMTP)</h2>
+        <p className="text-sm text-gray-500 mb-6">
+          Used to send OTP verification codes and password reset emails. Configure your provider (Gmail, Outlook, Zoho, etc.)
+          below — settings are saved to this device and take effect immediately, no restart needed.
+        </p>
+
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">SMTP Host</label>
+              <input
+                value={formData.smtpHost || ''}
+                onChange={(e) => handleChange('smtpHost', e.target.value)}
+                placeholder="e.g. smtp.gmail.com"
+                className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Port</label>
+              <input
+                type="number"
+                value={formData.smtpPort || 587}
+                onChange={(e) => handleChange('smtpPort', parseInt(e.target.value) || 0)}
+                placeholder="587"
+                className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Username / Email</label>
+              <input
+                value={formData.smtpUser || ''}
+                onChange={(e) => handleChange('smtpUser', e.target.value)}
+                placeholder="e.g. accounts@yourcompany.com"
+                className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">App Password</label>
+              <input
+                type="password"
+                value={formData.smtpPass || ''}
+                onChange={(e) => handleChange('smtpPass', e.target.value)}
+                placeholder="••••••••"
+                className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">From Address</label>
+              <input
+                type="email"
+                value={formData.smtpFrom || ''}
+                onChange={(e) => handleChange('smtpFrom', e.target.value)}
+                placeholder="e.g. noreply@yourcompany.com"
+                className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <p className="text-xs text-gray-500 mt-2">Optional. Falls back to the username when left blank.</p>
+            </div>
+            <div>
+              <label className="flex items-start gap-4 cursor-pointer mt-2">
+                <input
+                  type="checkbox"
+                  checked={!!formData.smtpSecure}
+                  onChange={(e) => handleChange('smtpSecure', e.target.checked)}
+                  className="mt-1 size-5 rounded border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                />
+                <div>
+                  <p className="font-bold text-gray-900 dark:text-gray-100">Use TLS/SSL (secure connection)</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Enable for ports like 465 (SSL) or startTLS on 587. Most providers require this.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-6">
+            <p className="font-bold text-blue-900 dark:text-blue-200">Test your settings</p>
+            <p className="text-sm text-blue-800 dark:text-blue-300 mt-1">
+              {smtpConfigured
+                ? 'Send a test message to verify the configuration works before using it for OTP / password reset emails.'
+                : 'Save SMTP host, username and password first to enable sending.'}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 mt-4">
+              <input
+                type="email"
+                value={testEmailTo}
+                onChange={(e) => setTestEmailTo(e.target.value)}
+                placeholder="recipient@example.com"
+                className="flex-1 px-4 py-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <button
+                onClick={handleTestEmail}
+                disabled={!smtpConfigured || isTestingEmail || !testEmailTo.trim()}
+                className="flex items-center justify-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+              >
+                <Send className="w-4 h-4" />
+                {isTestingEmail ? 'Sending...' : 'Send Test Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Appearance */}
       <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
         <h2 className="text-2xl font-bold mb-6">Appearance</h2>
@@ -349,6 +531,41 @@ const Settings = () => {
         </div>
       </div>
 
+      {/* Database */}
+      <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-3 mb-2">
+          <Database className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-bold">Database</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-6">
+          Back up or restore the entire SQLite database file. Restoring replaces <strong>all</strong> current ERP data with the backup.
+        </p>
+        <div className="space-y-4">
+          <button
+            onClick={handleDbBackup}
+            className="w-full p-4 border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-2xl hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors font-bold text-gray-700 dark:text-gray-300 flex items-center justify-center gap-3"
+          >
+            <Download className="w-5 h-5" />
+            Download Database Backup (.db)
+          </button>
+
+          <button
+            onClick={handleDbRestoreClick}
+            className="w-full p-4 border-2 border-dashed border-rose-300 dark:border-rose-900/60 rounded-2xl hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/10 transition-colors font-bold text-gray-700 dark:text-gray-300 flex items-center justify-center gap-3"
+          >
+            <Upload className="w-5 h-5" />
+            Restore Database from Backup
+          </button>
+          <input
+            ref={dbFileInputRef}
+            type="file"
+            accept=".db,application/octet-stream,application/x-sqlite3"
+            onChange={handleDbFileChange}
+            className="hidden"
+          />
+        </div>
+      </div>
+
       {/* Save Button */}
       <div className="flex gap-3">
         <button
@@ -372,6 +589,17 @@ const Settings = () => {
         message="This will replace ALL existing data with the imported data. This cannot be undone. Continue?"
         onConfirm={handleImportConfirm}
         onCancel={() => { setImportConfirm(false); setPendingImport(null); }}
+      />
+
+      {/* Database Restore Confirmation Modal */}
+      <ConfirmModal
+        isOpen={dbRestoreConfirm}
+        title="Restore Database"
+        message="Restoring a database will replace current ERP data with the backup. Create a backup before continuing? This cannot be undone. Continue?"
+        confirmLabel="Restore"
+        variant="warning"
+        onConfirm={handleDbRestoreConfirm}
+        onCancel={() => { setDbRestoreConfirm(false); setPendingDbRestore(null); }}
       />
 
       {toast && <Toast message={toast} onClose={() => setToast('')} type={toastType} />}
