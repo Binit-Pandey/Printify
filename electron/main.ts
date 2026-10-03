@@ -36,7 +36,9 @@ async function startLocalBackend(): Promise<void> {
 
   // Pre-1.0 builds stored the database under the package-name directory
   // (`printing-press-erp`). Carry that data forward once, never overwriting an
-  // existing database.
+  // existing database. The directory has to exist first: copyFileSync throws
+  // ENOENT when the destination folder is missing, which on a fresh install
+  // silently skipped the migration and left the user with an empty database.
   if (!existsSync(dbPath)) {
     const legacyDb = join(
       app.getPath('appData'),
@@ -46,10 +48,18 @@ async function startLocalBackend(): Promise<void> {
     );
     try {
       if (existsSync(legacyDb)) {
+        mkdirSync(dataDir, { recursive: true });
         copyFileSync(legacyDb, dbPath);
+        // Carry the write-ahead log across too, otherwise transactions that were
+        // committed but not yet checkpointed would be lost.
+        for (const suffix of ['-wal', '-shm']) {
+          const sidecar = legacyDb + suffix;
+          if (existsSync(sidecar)) copyFileSync(sidecar, dbPath + suffix);
+        }
+        console.log(`[db-migration] migrated legacy database from ${legacyDb}`);
       }
     } catch (err) {
-      console.error('[db-migration]', err);
+      console.error('[db-migration] could not migrate the legacy database:', err);
     }
   }
 
