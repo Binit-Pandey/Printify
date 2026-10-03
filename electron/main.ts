@@ -1,6 +1,7 @@
-import { app, BrowserWindow, shell, dialog, ipcMain } from 'electron';
-import { join } from 'path';
-import { copyFileSync, existsSync } from 'fs';
+import { app, BrowserWindow, shell, dialog, ipcMain, session } from 'electron';
+import type { Event as ElectronEvent, DownloadItem } from 'electron';
+import { join, dirname } from 'path';
+import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import type { Server as HttpServer } from 'http';
 
 // In development the frontend is served by Vite (started by `npm run
@@ -80,23 +81,141 @@ async function waitForBackend(attempts = 30): Promise<void> {
 // dialog. The print stylesheet already limits output to the invoice area, so
 // a silent print of the focused window renders exactly the invoice preview.
 function registerPrintIpc(): void {
-  ipcMain.handle('print:list-printers', (event) => {
-    return event.sender.getPrintersAsync();
+  ipcMain.handle('print:list-printers', async (event) => {
+    try {
+      const printers = await event.sender.getPrintersAsync();
+      // `isDefault` and `status` are reported by the platform backends but are
+      // absent from Electron's PrinterInfo typings, so read them defensively.
+      return printers.map((p) => {
+        const extra = p as unknown as { isDefault?: boolean; status?: number };
+        return {
+          name: p.name,
+          displayName: p.displayName || p.name,
+          isDefault: extra.isDefault === true,
+          status: typeof extra.status === 'number' ? extra.status : 0,
+        };
+      });
+    } catch (err) {
+      console.error('[print] could not enumerate printers:', err);
+      throw new Error('Could not read the printer list from the operating system.');
+    }
   });
 
-  ipcMain.handle('print:direct', (event, deviceName: unknown) => {
-    return new Promise<{ ok: boolean }>((resolve, reject) => {
+  ipcMain.handle('print:direct', (event, deviceName: unknown, copies: unknown) => {
+    return new Promise<{ ok: boolean; device: string | null }>((resolve, reject) => {
+      const device = typeof deviceName === 'string' && deviceName ? deviceName : undefined;
       event.sender.print(
         {
           silent: true,
           printBackground: true,
-          deviceName: typeof deviceName === 'string' && deviceName ? deviceName : undefined,
+          copies: typeof copies === 'number' && copies > 0 ? copies : 1,
+          deviceName: device,
         },
         (ok, failureReason) => {
-          if (ok) resolve({ ok: true });
-          else reject(new Error(failureReason || 'Print failed'));
+          if (ok) resolve({ ok: true, device: device ?? null });
+          // Surface the driver's own reason (no default printer, spooler down,
+          // wrong paper size, ...) instead of a generic failure.
+          else reject(new Error(failureReason || 'The printer did not accept the job.'));
         },
       );
+    });
+  });
+
+  // Prints through the operating system's own print dialog. This is the
+  // reliable path when no printer is configured as a default, and it lets the
+  // user pick destination, copies and paper size.
+  ipcMain.handle('print:dialog', async (event) => {
+    return new Promise<{ ok: boolean }>((resolve) => {
+      event.sender.print({ silent: false, printBackground: true }, (ok, failureReason) => {
+        if (ok) resolve({ ok: true });
+        else console.error('[print] dialog print failed:', failureReason);
+        resolve({ ok: false });
+      });
+    });
+  });
+
+  // Renders the current invoice straight to a PDF file. Unlike printing this
+  // needs no printer driver at all, so it still works on a machine where no
+  // printer has been configured.
+  ipcMain.handle('print:to-pdf', async (event, suggestedName: unknown) => {
+    const suggested = typeof suggestedName === 'string' && suggestedName.trim()
+      ? `${suggestedName.trim()}.pdf`
+      : 'invoice.pdf';
+
+    const saveOptions: Electron.SaveDialogSyncOptions = {
+      title: 'Save Invoice as PDF',
+      defaultPath: suggested,
+      filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
+    };
+    const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    const target = parent
+      ? dialog.showSaveDialogSync(parent, saveOptions)
+      : dialog.showSaveDialogSync(saveOptions);
+    if (!target) return { ok: false, cancelled: true };
+
+    const data = await event.sender.printToPDF({ printBackground: true });
+    writeFileSync(target, data);
+    console.log('[print] wrote PDF to', target);
+    return { ok: true, cancelled: false, path: target };
+  });
+}
+
+// ── File downloads (PDF export) ──────────────────────────────────────────────
+// "Download PDF" in the renderer works by navigating to a blob: URL, which
+// Chromium reports as a download. Without a `will-download` handler the request
+// is abandoned: no file is written and only a `.org.chromium.Chromium.*`
+// temporary artefact is left in the downloads directory, so the user clicks the
+// button and nothing appears to happen. Handling the event gives each download
+// a real destination and surfaces failures.
+function registerDownloadHandler(): void {
+  const ses = session.defaultSession;
+
+  ses.on('will-download', (_event: ElectronEvent, item: DownloadItem) => {
+    const suggested = item.getFilename();
+    const filters = item.getMimeType() === 'application/pdf'
+      ? [{ name: 'PDF Document', extensions: ['pdf'] }]
+      : [{ name: 'All Files', extensions: ['*'] }];
+
+    // Ask where to save it. `defaultPath` is seeded with the suggested name so
+    // the common case is a single Enter.
+    const saveOptions: Electron.SaveDialogSyncOptions = {
+      title: 'Save Invoice',
+      defaultPath: suggested,
+      filters,
+    };
+    const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+    const target = parent
+      ? dialog.showSaveDialogSync(parent, saveOptions)
+      : dialog.showSaveDialogSync(saveOptions);
+
+    if (!target) {
+      item.cancel();
+      return;
+    }
+
+    try {
+      // Ensure the chosen directory exists (users often pick a new folder).
+      mkdirSync(dirname(target), { recursive: true });
+    } catch (err) {
+      console.error('[download] could not create directory:', err);
+    }
+
+    item.setSavePath(target);
+    console.log('[download] saving', target);
+
+    // Report terminal failures (disk full, permission denied) back to the
+    // renderer instead of leaving the user believing the PDF was created.
+    item.once('done', (_itemEvent, state) => {
+      if (state === 'completed') return;
+      const reason = state === 'cancelled'
+        ? 'cancelled'
+        : 'could not be written (check disk space and folder permissions)';
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        void mainWindow.webContents.executeJavaScript(
+          `window.dispatchEvent(new CustomEvent('printpress:download-failed', { detail: ${JSON.stringify(reason)} }))`,
+          true,
+        );
+      }
     });
   });
 }
@@ -161,17 +280,23 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
 
   try {
+    // Only this process opens the database when it also started the embedded
+    // backend (packaged builds). In development the backend runs as a separate
+    // `tsx watch` process, so requiring the database here would load
+    // better-sqlite3 — compiled for Node's ABI — into Electron's ABI and always
+    // fail with ERR_DLOPEN_FAILED.
     if (httpServer) {
       const backend = require('../backend/dist/server.js') as {
         stopServer: (server: HttpServer) => Promise<void>;
       };
       await backend.stopServer(httpServer);
       httpServer = null;
+
+      const { closeDatabase } = require('../backend/dist/db.js') as {
+        closeDatabase: () => void;
+      };
+      closeDatabase();
     }
-    const { closeDatabase } = require('../backend/dist/db.js') as {
-      closeDatabase: () => void;
-    };
-    closeDatabase();
   } catch (err) {
     console.error('[shutdown]', err);
   }
@@ -187,6 +312,7 @@ app.whenReady().then(async () => {
   app.setAppUserModelId('com.printpress.erp');
 
   registerPrintIpc();
+  registerDownloadHandler();
 
   try {
     if (!DEV_SERVER_URL) {

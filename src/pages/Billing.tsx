@@ -1,17 +1,23 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, FileDown } from 'lucide-react';
 import { useStore } from '../contexts/store';
 import { useAuth } from '../contexts/AuthContext';
 import type { Bill } from '../types';
 import BillForm from '../components/BillForm';
 import InvoicePreview, { type InvoiceFormat } from '../components/InvoicePreview';
+import Toast from '../components/Toast';
 
 interface SystemPrinter {
   name: string;
   displayName: string;
   isDefault: boolean;
   status: number;
+}
+
+interface ToastState {
+  message: string;
+  type?: 'success' | 'error';
 }
 
 const Billing = () => {
@@ -28,20 +34,36 @@ const Billing = () => {
   const [printers, setPrinters] = useState<SystemPrinter[]>([]);
   const [printer, setPrinter] = useState<string>(() => localStorage.getItem('printpress_printer') || '');
   const [directPrinting, setDirectPrinting] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   useEffect(() => {
     if (!isDesktop) return;
     window.printpressDesktop!.printService!.listPrinters()
       .then((list) => {
         setPrinters(list);
-        if (!localStorage.getItem('printpress_printer') && list.length > 0) {
+        // A previously selected printer may have been removed or renamed.
+        if (list.length > 0 && !list.some((p) => p.name === localStorage.getItem('printpress_printer'))) {
           const preferred = list.find((p) => p.isDefault) || list[0];
           setPrinter(preferred.name);
           localStorage.setItem('printpress_printer', preferred.name);
         }
       })
-      .catch(() => setPrinters([]));
+      .catch((err) => {
+        console.error('Could not list printers:', err);
+        setPrinters([]);
+      });
   }, [isDesktop]);
+
+  // The main process broadcasts this when a PDF download cannot be written, so
+  // the user is not left thinking the invoice was saved.
+  useEffect(() => {
+    const onFailed = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      setToast({ message: `Could not save PDF${detail ? `: ${detail}` : ''}`, type: 'error' });
+    };
+    window.addEventListener('printpress:download-failed', onFailed);
+    return () => window.removeEventListener('printpress:download-failed', onFailed);
+  }, []);
 
   const selectPrinter = (name: string) => {
     setPrinter(name);
@@ -74,26 +96,60 @@ const Billing = () => {
     }, 1500);
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleDirectPrint = async () => {
     if (!preview || preview.items.length === 0 || !isDesktop) return;
+    if (printers.length === 0) {
+      setToast({ message: 'No printer configured. Use "Save as PDF" instead.', type: 'error' });
+      return;
+    }
     setDirectPrinting(true);
     try {
       await window.printpressDesktop!.printService!.directPrint(printer || undefined);
+      setToast({ message: 'Sent to printer.' });
     } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
       console.error('Direct print failed:', err);
+      // A silent job is rejected outright when no usable printer exists, so
+      // retry through the system dialog where the user can pick a destination.
+      try {
+        await window.printpressDesktop!.printService!.printWithDialog();
+        setToast({ message: 'Opening the print dialog…' });
+      } catch {
+        setToast({ message: `Print failed: ${reason}. Try "Save as PDF".`, type: 'error' });
+      }
     } finally {
       setDirectPrinting(false);
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // Renders the invoice to a PDF file without needing a printer driver.
+  const handleSaveAsPDF = async () => {
+    if (!preview || preview.items.length === 0 || !isDesktop) return;
+    try {
+      const result = await window.printpressDesktop!.printService!.saveAsPdf(preview.billNumber);
+      if (result.ok) setToast({ message: `PDF saved to ${result.path}` });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error('Save as PDF failed:', err);
+      setToast({ message: `Could not save PDF: ${reason}`, type: 'error' });
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (!preview || preview.items.length === 0) return;
-    const { downloadInvoicePDF } = await import('../utils/pdfGenerator');
-    downloadInvoicePDF(preview, settings.name, settings.address, settings.contactNumber, settings.vatRate ?? 13, format);
+    try {
+      const { downloadInvoicePDF } = await import('../utils/pdfGenerator');
+      downloadInvoicePDF(preview, settings.name, settings.address, settings.contactNumber, settings.vatRate ?? 13, format);
+      if (isDesktop) setToast({ message: 'Choose where to save the PDF.' });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error('PDF generation failed:', err);
+      setToast({ message: `Could not generate PDF: ${reason}`, type: 'error' });
+    }
   };
 
   return (
@@ -138,10 +194,15 @@ const Billing = () => {
                 )}
               </select>
               <button onClick={handleDirectPrint} disabled={!preview || preview.items.length === 0 || directPrinting}
-                title="Print straight to the selected bill printer without the dialog"
+                title={printers.length === 0 ? 'No printer is configured in your operating system' : 'Print straight to the selected bill printer without the dialog'}
                 className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-2xl hover:bg-emerald-800 transition-colors disabled:opacity-50 font-semibold">
                 <Printer className="w-4 h-4" /> {directPrinting ? 'Printing…' : 'Direct Print'}
               </button>
+              {printers.length === 0 && (
+                <span className="text-xs text-gray-500 max-w-[240px] leading-snug">
+                  No printer configured — use Save as PDF, or add a printer in your operating system.
+                </span>
+              )}
             </>
           )}
           <button onClick={handlePrint} disabled={!preview || preview.items.length === 0}
@@ -152,13 +213,20 @@ const Billing = () => {
             className="flex items-center gap-2 px-5 py-2.5 border border-gray-300 dark:border-gray-700 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 font-semibold">
             <Download className="w-4 h-4" /> Download PDF
           </button>
+          {isDesktop && (
+            <button onClick={handleSaveAsPDF} disabled={!preview || preview.items.length === 0}
+              title="Save the invoice as a PDF file. Works without a printer."
+              className="flex items-center gap-2 px-5 py-2.5 border border-gray-300 dark:border-gray-700 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 font-semibold">
+              <FileDown className="w-4 h-4" /> Save as PDF
+            </button>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left: Form */}
         <div className="lg:col-span-7 space-y-6 no-print">
-          <BillForm onChange={handleBillChange} onSubmit={handleSubmit} />
+          <BillForm onChange={handleBillChange} onSubmit={handleSubmit} onError={(msg) => setToast({ message: `Could not save invoice: ${msg}`, type: 'error' })} />
         </div>
 
         {/* Right: Invoice Preview */}
@@ -185,6 +253,15 @@ const Billing = () => {
           </div>
         </div>
       </div>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          duration={toast.type === 'error' ? 5000 : 2500}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 };

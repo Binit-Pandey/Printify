@@ -9,6 +9,7 @@
   "author": "PrintPress ERP",
   "scripts": {
     "dev": "concurrently -k -n backend,vite -c blue,green \"npm:dev:backend\" \"npm:dev:vite\"",
+    "predev:backend": "node scripts/ensure-native.cjs",
     "dev:backend": "tsx watch backend/src/index.ts",
     "dev:vite": "vite",
     "build": "tsc -b && vite build",
@@ -18,12 +19,17 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "icons": "node scripts/generate-icons.cjs && node scripts/generate-ico.cjs",
+    "postinstall": "node scripts/ensure-native.cjs",
+    "ensure:native": "node scripts/ensure-native.cjs",
     "electron:dev": "npm run build:electron && concurrently -k -n backend,vite,app -c blue,green,magenta \"npm:dev:backend\" \"npm:dev:vite\" \"npm:dev:electron\"",
-    "dev:electron": "wait-on tcp:127.0.0.1:3001 tcp:127.0.0.1:5000 && cross-env VITE_DEV_SERVER_URL=http://localhost:5000 electron .",
+    "dev:electron": "wait-on tcp:127.0.0.1:3001 tcp:127.0.0.1:5000 && cross-env VITE_DEV_SERVER_URL=http://localhost:5000 node scripts/electron-dev.cjs",
     "electron:pack": "npm run build:all && npm run electron:rebuild && electron-builder --dir && npm run electron:restore",
     "electron:build": "npm run build:all && npm run electron:rebuild && electron-builder && npm run electron:restore",
     "electron:rebuild": "electron-rebuild -f -m .",
     "electron:restore": "npm rebuild better-sqlite3"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

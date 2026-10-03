@@ -25,15 +25,29 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+for /f "tokens=*" %%v in ('node -v') do set NODE_VERSION=%%v
+
 if not exist "node_modules" (
     echo Installing dependencies (first run)...
     call npm install
 )
 
+echo   Node.js: %NODE_VERSION%
+echo.
+
 echo.
 echo Launching PrintPress ERP desktop app...
 echo   Backend: http://localhost:3001
 echo   Frontend (dev): http://localhost:5000
+echo.
+echo --------------------------------------------
+echo   Default login (fresh install)
+echo --------------------------------------------
+echo   User ID  : superadmin
+echo   Password : admin123
+echo.
+echo   Change this password after the first login.
+echo   Already registered? Use the account you signed up with.
 echo.
 echo   Press Ctrl+C to stop everything.
 echo.

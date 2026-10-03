@@ -27,6 +27,21 @@ export function getAuthToken(): string | null {
   }
 }
 
+// Fired when the backend rejects the stored token (expired session, backend
+// restarted, database reset). The app listens for this to sign the user out
+// instead of silently failing every subsequent request.
+export const SESSION_EXPIRED_EVENT = 'printpress:session-expired';
+
+function notifySessionExpired(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    authToken = null;
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  } catch {
+    /* localStorage unavailable */
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = getAuthToken();
@@ -37,6 +52,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers,
     ...options,
   });
+  if (res.status === 401 && token) {
+    // The credential we sent no longer works; retrying with it is pointless.
+    notifySessionExpired();
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`API ${options?.method ?? 'GET'} ${path} failed (${res.status}): ${text}`);

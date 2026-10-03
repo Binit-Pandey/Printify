@@ -37,7 +37,7 @@ interface AppState {
   updateExpense: (expense: Expense) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
 
-  addBill: (bill: Bill) => Promise<void>;
+  addBill: (bill: Bill) => Promise<Bill>;
   updateBill: (bill: Bill) => Promise<void>;
   deleteBill: (id: string) => Promise<void>;
 
@@ -218,8 +218,12 @@ export const useStore = create<AppState>()((set) => ({
 
   // Bills
   addBill: async (bill) => {
-    await api.bills.create(bill);
-    set((s) => ({ bills: [...s.bills, bill] }));
+    // Keep the server's persisted row: it is the authoritative record and
+    // carries any values the backend filled in or normalised.
+    const saved = await api.bills.create(bill);
+    const record = saved ?? bill;
+    set((s) => ({ bills: [record, ...s.bills] }));
+    return record;
   },
   updateBill: async (bill) => {
     await api.bills.update(bill);

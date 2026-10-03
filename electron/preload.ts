@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('printpressDesktop', {
   },
   printService: {
     listPrinters: () => ipcRenderer.invoke('print:list-printers'),
-    directPrint: (deviceName?: string) => ipcRenderer.invoke('print:direct', deviceName),
+    directPrint: (deviceName?: string, copies?: number) => ipcRenderer.invoke('print:direct', deviceName, copies),
+    printWithDialog: () => ipcRenderer.invoke('print:dialog'),
+    saveAsPdf: (suggestedName?: string) => ipcRenderer.invoke('print:to-pdf', suggestedName),
   },
 });

@@ -3,13 +3,8 @@ import { scryptSync, randomBytes, timingSafeEqual, randomInt } from 'crypto';
 import { db } from '../db';
 import { wrap } from './wrap';
 import { createMockToken } from '../middleware/auth';
+import { mockUsers, mockUserPassword } from '../mockUsers';
 import { sendOtpEmail, sendPasswordResetEmail } from '../email';
-
-const mockUsers = [
-  { id: '1', username: 'superadmin', role: 'superadmin' as const, name: 'Super Admin', email: 'super@printpress.com' },
-  { id: '2', username: 'admin', role: 'admin' as const, name: 'Admin User', email: 'admin@printpress.com' },
-  { id: '3', username: 'staff', role: 'staff' as const, name: 'Staff User', email: 'staff@printpress.com' },
-];
 
 const router = Router();
 
@@ -262,7 +257,7 @@ router.post('/login', wrap(async (req, res) => {
   // the `users` table is required instead).
   const allowMockUsers = process.env.NODE_ENV !== 'production';
   const mockUser = allowMockUsers ? mockUsers.find(u => u.username === username) : undefined;
-  if (mockUser && password === 'admin123') {
+  if (mockUser && password === mockUserPassword) {
     const token = createMockToken(mockUser);
     res.json({ user: { ...mockUser, company_name: undefined, full_name: mockUser.name }, token });
     return;

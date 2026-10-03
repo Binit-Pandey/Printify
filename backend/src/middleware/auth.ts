@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../db';
+import { findMockUserById, type MockUser } from '../mockUsers';
 
 interface UserShape {
   id: string;
@@ -26,6 +27,43 @@ function createMockToken(user: UserShape): string {
   return token;
 }
 
+// Mock tokens are held in process memory, so every backend restart would
+// otherwise invalidate a token the renderer still has in localStorage — the
+// user stays "logged in" but every API call fails with 401 Invalid token.
+// Because the token embeds the user's id, rehydrate it from the demo account
+// list instead of forcing a re-login.
+//
+// SECURITY: this must only ever run in development. Rehydrating from a token
+// string alone would let anyone forge `mock_1_<anything>` and be granted
+// superadmin, so the check mirrors the one in the login route: demo accounts do
+// not exist when NODE_ENV is 'production' (which is how the packaged app runs).
+function resolveMockToken(token: string): UserShape | undefined {
+  const cached = MOCK_TOKENS[token];
+  if (cached) return cached;
+
+  if (process.env.NODE_ENV === 'production') return undefined;
+
+  const parts = token.split('_');
+  if (parts.length < 3 || parts[0] !== 'mock') return undefined;
+  if (!/^\d+$/.test(parts[2])) return undefined;
+
+  const mock: MockUser | undefined = findMockUserById(parts[1]);
+  if (!mock) return undefined;
+
+  const user: UserShape = {
+    id: mock.id,
+    company_name: undefined,
+    full_name: mock.name,
+    email: mock.email,
+    username: mock.username,
+    role: mock.role,
+    name: mock.name,
+    email_verified: true,
+  };
+  MOCK_TOKENS[token] = user;
+  return user;
+}
+
 export { createMockToken };
 
 export function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -38,7 +76,7 @@ export function authenticate(req: AuthenticatedRequest, res: Response, next: Nex
   const token = header.slice(7);
 
   if (token.startsWith('mock_')) {
-    const user = MOCK_TOKENS[token];
+    const user = resolveMockToken(token);
     if (!user) {
       res.status(401).json({ error: 'Invalid token' });
       return;

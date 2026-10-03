@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { User } from '../types';
-import { api, setAuthToken, TOKEN_KEY } from '../services/api';
+import { api, setAuthToken, TOKEN_KEY, SESSION_EXPIRED_EVENT } from '../services/api';
 
 const STORAGE_KEY = 'printpress_user';
 
@@ -69,6 +69,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   if (token) {
     setAuthToken(token);
   }
+
+  // A token that the backend no longer accepts (backend restarted, session
+  // removed, database reset) would otherwise fail every request silently.
+  useEffect(() => {
+    const onExpired = () => logout();
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ user, login, logout, setUser }}>

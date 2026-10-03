@@ -17,7 +17,9 @@ declare global {
           isDefault: boolean;
           status: number;
         }>>;
-        directPrint: (deviceName?: string) => Promise<{ ok: boolean }>;
+        directPrint: (deviceName?: string, copies?: number) => Promise<{ ok: boolean; device: string | null }>;
+        printWithDialog: () => Promise<{ ok: boolean }>;
+        saveAsPdf: (suggestedName?: string) => Promise<{ ok: boolean; cancelled?: boolean; path?: string }>;
       };
     };
   }

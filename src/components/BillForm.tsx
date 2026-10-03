@@ -11,9 +11,10 @@ interface BillFormProps {
   onSubmit: (bill: Bill) => void | Promise<void>;
   onChange?: (bill: Bill) => void;
   onSaved?: () => void;
+  onError?: (message: string) => void;
 }
 
-const BillForm = ({ initialBill, submitLabel, onSubmit, onChange, onSaved }: BillFormProps) => {
+const BillForm = ({ initialBill, submitLabel, onSubmit, onChange, onSaved, onError }: BillFormProps) => {
   const { inventory, settings } = useStore();
   const { user } = useAuth();
 
@@ -123,6 +124,12 @@ const BillForm = ({ initialBill, submitLabel, onSubmit, onChange, onSaved }: Bil
       setIsSaved(true);
       onSaved?.();
       setTimeout(() => setIsSaved(false), 1500);
+    } catch (err) {
+      // Without this the rejection is unhandled: the button appears inert and
+      // the user is told nothing, which is indistinguishable from a hang.
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error('Saving the invoice failed:', err);
+      onError?.(reason);
     } finally {
       setSubmitting(false);
     }
