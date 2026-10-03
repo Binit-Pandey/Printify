@@ -6,6 +6,7 @@ import { Search, Trash2, Phone, MapPin, Mail, AlertCircle, HandCoins, X } from '
 import { useFilter } from '../hooks/useFilter';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
+import { localDateKey } from '../utils/date';
 
 const PAYMENT_METHODS = ['Cash', 'Card', 'Bank Transfer', 'Online', 'Cheque', 'Other'];
 
@@ -23,16 +24,21 @@ const Customers = () => {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [paymentNote, setPaymentNote] = useState('');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState(localDateKey());
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState('');
 
-  const handleDeleteConfirm = () => {
-    if (deleteTarget) {
-      deleteCustomer(deleteTarget.id);
-      setDeleteTarget(null);
-      setToast('Customer deleted');
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    try {
+      await deleteCustomer(target.id);
+    } catch (e: any) {
+      setToast(e?.message || 'Could not delete customer');
+      return;
     }
+    setDeleteTarget(null);
+    setToast('Customer deleted');
   };
 
   const pendingBills = paymentCustomer
@@ -45,7 +51,7 @@ const Customers = () => {
     setPaymentAmount('');
     setPaymentMethod('Cash');
     setPaymentNote('');
-    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentDate(localDateKey());
     const firstPending = bills.find(b => b.status === 'Pending' && b.customer?.id === customer.id);
     setPaymentBillId(firstPending?.id ?? '');
     setPaymentsLoading(true);

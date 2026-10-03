@@ -8,6 +8,8 @@ import { useFilter } from '../hooks/useFilter';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
 import AccessDenied from './AccessDenied';
+import { newId } from '../utils/id';
+import { localDateKey } from '../utils/date';
 
 const EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Supplies', 'Maintenance', 'Salary', 'Transport', 'Other'];
 
@@ -22,6 +24,7 @@ const Expenses = () => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
   const [toast, setToast] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
 
   const filteredByMonth = useMemo(() => {
     return filteredItems.filter(e => e.date.startsWith(selectedMonth));
@@ -44,7 +47,7 @@ const Expenses = () => {
       category: formData.category,
       amount: formData.amount,
       reason: formData.reason || '',
-      date: formData.date || new Date().toISOString().split('T')[0],
+      date: formData.date || localDateKey(),
     });
     if (!result.success) {
       const errors: Record<string, string> = {};
@@ -65,19 +68,27 @@ const Expenses = () => {
     setEditingExpense(null);
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!validateForm()) return;
     const newExpense: Expense = {
-      id: crypto.randomUUID(),
+      id: newId(),
       category: formData.category!,
       amount: formData.amount!,
       reason: formData.reason || '',
-      date: formData.date || new Date().toISOString().split('T')[0],
+      date: formData.date || localDateKey(),
       addedBy: user?.name || 'Admin',
     };
-    addExpense(newExpense);
-    resetForm();
-    setToast('Expense added successfully');
+    try {
+      await addExpense(newExpense);
+      resetForm();
+      setToast('Expense added successfully');
+      setToastType('success');
+    } catch (e: any) {
+      // Fire-and-forget used to report success even when the write failed, so
+      // the entry silently vanished on the next reload.
+      setToast(e?.message || 'Failed to add expense');
+      setToastType('error');
+    }
   };
 
   const handleEditExpense = (expense: Expense) => {
@@ -86,7 +97,7 @@ const Expenses = () => {
     setShowAddModal(true);
   };
 
-  const handleUpdateExpense = () => {
+  const handleUpdateExpense = async () => {
     if (!validateForm() || !editingExpense) return;
     const updated: Expense = {
       ...editingExpense,
@@ -95,16 +106,27 @@ const Expenses = () => {
       reason: formData.reason || '',
       date: formData.date || editingExpense.date,
     };
-    updateExpense(updated);
-    resetForm();
-    setToast('Expense updated successfully');
+    try {
+      await updateExpense(updated);
+      resetForm();
+      setToast('Expense updated successfully');
+      setToastType('success');
+    } catch (e: any) {
+      setToast(e?.message || 'Failed to update expense');
+      setToastType('error');
+    }
   };
 
-  const handleDeleteConfirm = () => {
-    if (deleteTarget) {
-      deleteExpense(deleteTarget.id);
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteExpense(deleteTarget.id);
       setDeleteTarget(null);
       setToast('Expense deleted');
+      setToastType('success');
+    } catch (e: any) {
+      setToast(e?.message || 'Failed to delete expense');
+      setToastType('error');
     }
   };
 
@@ -273,7 +295,7 @@ const Expenses = () => {
                 <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Date *</label>
                 <input
                   type="date"
-                  value={formData.date || new Date().toISOString().split('T')[0]}
+                  value={formData.date || localDateKey()}
                   onChange={(e) => setFormData({...formData, date: e.target.value})}
                   className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
                 />
@@ -344,7 +366,7 @@ const Expenses = () => {
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
+      {toast && <Toast message={toast} type={toastType} onClose={() => setToast('')} />}
     </div>
   );
 };

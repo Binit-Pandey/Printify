@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Customer, InventoryItem, Vendor, VendorPayment, CustomerPayment, Expense, Bill, CompanySettings } from '../types';
-import { api } from '../services/api';
+import { api, getAuthToken, DATA_CHANGED_EVENT, type DataChangedDetail } from '../services/api';
 
 interface AppState {
   customers: Customer[];
@@ -11,8 +11,10 @@ interface AppState {
   settings: CompanySettings;
   canEditOwnExpense: boolean;
   isInitialized: boolean;
+  isRefreshing: boolean;
 
   initialize: (role?: string | null) => Promise<void>;
+  refresh: () => Promise<void>;
 
   findOrCreateCustomer: (data: { name: string; phone: string; address?: string; email?: string }) => Promise<Customer>;
   addCustomer: (customer: Customer) => Promise<void>;
@@ -53,6 +55,16 @@ const defaultSettings: CompanySettings = {
   email: '',
 };
 
+// The role decides which collections the current user is allowed to read; it is
+// captured here so a refresh triggered by any page knows what to ask for.
+let activeRole: string | null = null;
+
+// Writes often land in bursts (saving an inventory item also records the
+// matching vendor purchase), so refreshes are coalesced into one round trip
+// instead of refetching everything per mutation.
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshInFlight: Promise<void> | null = null;
+
 export const useStore = create<AppState>()((set) => ({
   customers: [],
   inventory: [],
@@ -62,11 +74,65 @@ export const useStore = create<AppState>()((set) => ({
   settings: defaultSettings,
   canEditOwnExpense: false,
   isInitialized: false,
+  isRefreshing: false,
+
+  // Re-pull everything from the server. Called after each write so totals,
+  // balances and timestamps come from the authoritative record instead of a
+  // local guess, which is what makes the UI consistent across pages.
+  refresh: async () => {
+    // activeRole outlives a sign-out (initialize is not re-run), so confirm a
+    // credential is still present before spending requests on a doomed load.
+    if (!activeRole || !getAuthToken()) return;
+    if (refreshInFlight) return refreshInFlight;
+
+    refreshInFlight = (async () => {
+      set({ isRefreshing: true });
+      try {
+        if (activeRole === 'staff') {
+          const [expenseRes, bills, inventory, vendors, settings] = await Promise.all([
+            api.expenses.mine(),
+            api.bills.list(),
+            api.inventory.list(),
+            api.vendors.list(),
+            api.settings.get(),
+          ]);
+          set({
+            inventory,
+            vendors,
+            expenses: expenseRes.expenses,
+            bills,
+            settings,
+            canEditOwnExpense: expenseRes.canEditOwn,
+          });
+          return;
+        }
+
+        const [customers, inventory, vendors, expenses, bills, settings] = await Promise.all([
+          api.customers.list(),
+          api.inventory.list(),
+          api.vendors.list(),
+          api.expenses.list(),
+          api.bills.list(),
+          api.settings.get(),
+        ]);
+        set({ customers, inventory, vendors, expenses, bills, settings });
+      } finally {
+        set({ isRefreshing: false });
+      }
+    })();
+
+    try {
+      await refreshInFlight;
+    } finally {
+      refreshInFlight = null;
+    }
+  },
 
   initialize: async (role) => {
+    activeRole = role ?? null;
     try {
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Initialization timeout')), 5000)
+        setTimeout(() => reject(new Error('Initialization timeout')), 10000)
       );
 
       const isStaff = role === 'staff';
@@ -79,7 +145,9 @@ export const useStore = create<AppState>()((set) => ({
           api.vendors.list(),
           api.settings.get(),
         ]);
-        const [[expenseRes, bills, inventory, vendors, settings]] = await Promise.race([
+        // Promise.race settles with the array that Promise.all resolves to, so
+        // this must destructure one level, not two.
+        const [expenseRes, bills, inventory, vendors, settings] = await Promise.race([
           loadDataPromise,
           timeoutPromise,
         ]) as any;
@@ -113,6 +181,8 @@ export const useStore = create<AppState>()((set) => ({
 
       set({ customers, inventory, vendors, expenses, bills, settings, canEditOwnExpense: false, isInitialized: true });
     } catch (error) {
+      // An unusable session is handled by the api layer (reload or sign-out);
+      // surfacing an empty dashboard here beats leaving the app spinning.
       console.warn('Failed to load data, using defaults:', error);
       set({
         customers: [],
@@ -182,7 +252,8 @@ export const useStore = create<AppState>()((set) => ({
 
   addVendorPayment: async (payment) => {
     await api.vendorPayments.create(payment);
-    // Refresh the vendor to get updated outstandingBalance
+    // Refresh immediately so the outstanding balance the user is looking at
+    // reflects the write; the coalesced auto-refresh then reconciles the rest.
     const vendors = await api.vendors.list();
     set({ vendors });
   },
@@ -240,3 +311,22 @@ export const useStore = create<AppState>()((set) => ({
     set({ settings });
   },
 }));
+
+// Auto-reload after anything is written. Every successful non-GET request
+// announces itself, so a purchase, an expense, a vendor edit or a staff change
+// made in one place refreshes the data shown everywhere else — including
+// totals and balances that are derived on the server.
+if (typeof window !== 'undefined') {
+  window.addEventListener(DATA_CHANGED_EVENT, ((event: Event) => {
+    const detail = (event as CustomEvent<DataChangedDetail>).detail;
+    if (!activeRole || !getAuthToken()) return; // signed out; nothing to refresh
+    if (refreshTimer) clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      console.debug(`Auto-refreshing after ${detail?.method ?? 'write'} ${detail?.path ?? ''}`);
+      useStore.getState().refresh().catch((error) => {
+        console.warn('Auto refresh failed:', error);
+      });
+    }, 250);
+  }) as EventListener);
+}

@@ -1,12 +1,15 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useStore } from '../contexts/store';
 import type { Vendor, VendorPayment } from '../types';
 import { vendorSchema } from '../utils/validationSchemas';
 import { Plus, Search, Edit2, Trash2, X, Phone, MapPin, CreditCard, Clock, History, FileText } from 'lucide-react';
 import { useFilter } from '../hooks/useFilter';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
 import { api } from '../services/api';
+import { newId } from '../utils/id';
+import { localDateKey } from '../utils/date';
 
 const Vendors = () => {
   const { vendors, settings, addVendor, updateVendor, deleteVendor, addVendorPayment } = useStore();
@@ -25,18 +28,18 @@ const Vendors = () => {
   const [paymentHistory, setPaymentHistory] = useState<VendorPayment[]>([]);
   const [allPayments, setAllPayments] = useState<VendorPayment[]>([]);
 
-  const refreshPayments = useCallback(() => {
-    api.vendorPayments.listAll().then(setAllPayments).catch(() => {});
+  const refreshPayments = useCallback(async () => {
+    try {
+      setAllPayments(await api.vendorPayments.listAll());
+    } catch (error) {
+      console.warn('Failed to refresh vendor payments:', error);
+    }
   }, []);
 
-  useEffect(() => {
-    refreshPayments();
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') refreshPayments();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [refreshPayments]);
+  // Purchases recorded on the Inventory page change these balances, so refresh
+  // whenever a vendor or vendor-payment write lands and when the app returns to
+  // the foreground.
+  useAutoRefresh(refreshPayments, ['/vendor-payments', '/vendors']);
 
   const vendorStats = useMemo(() => {
     const stats: Record<string, { totalBill: number; totalPaid: number; dueAmount: number; oldestDue: string | null }> = {};
@@ -87,7 +90,7 @@ const Vendors = () => {
   const handleAddVendor = async () => {
     if (!validateForm()) return;
     const newVendor: Vendor = {
-      id: crypto.randomUUID(),
+      id: newId(),
       name: formData.name!,
       phone: formData.phone!,
       address: formData.address || '',
@@ -144,10 +147,10 @@ const Vendors = () => {
   const handlePay = async () => {
     if (!payTarget || payAmount <= 0) return;
     const vp: VendorPayment = {
-      id: crypto.randomUUID(),
+      id: newId(),
       vendorId: payTarget.id,
       amount: payAmount,
-      date: new Date().toISOString().split('T')[0],
+      date: localDateKey(),
       type: 'payment',
       description: payDescription || 'Payment to vendor',
     };
@@ -341,7 +344,7 @@ const Vendors = () => {
     pdf.setFont('helvetica', 'italic');
     pdf.text('Powered by Prime Logic Tech', pageWidth / 2, pdf.internal.pageSize.getHeight() - 8, { align: 'center' });
 
-    pdf.save(`Vendor-Aging-Due-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+    pdf.save(`Vendor-Aging-Due-Report-${localDateKey()}.pdf`);
   };
 
   return (

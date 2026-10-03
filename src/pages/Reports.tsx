@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { useStore } from '../contexts/store';
 import { useTheme } from '../contexts/ThemeContext';
 import { api } from '../services/api';
@@ -10,6 +11,7 @@ import {
 import Card from '../components/ui/Card';
 import AccessDenied from './AccessDenied';
 import { useAuth } from '../contexts/AuthContext';
+import { localDateKey } from '../utils/date';
 import {
   TrendingUp, TrendingDown, Users, ShoppingCart,
   Download, Calendar, ArrowUpRight, ArrowDownRight
@@ -28,13 +30,21 @@ const Reports = () => {
   const [customEnd, setCustomEnd] = useState('');
   const [vendorPayments, setVendorPayments] = useState<VendorPayment[]>([]);
 
-  useEffect(() => {
-    api.vendorPayments.listAll().then(setVendorPayments).catch(() => setVendorPayments([]));
+  const loadVendorPayments = useCallback(async () => {
+    try {
+      setVendorPayments(await api.vendorPayments.listAll());
+    } catch {
+      setVendorPayments([]);
+    }
   }, []);
+
+  // Investment totals come from vendor payments, which change whenever a
+  // purchase is recorded from the Inventory or Vendors page.
+  useAutoRefresh(loadVendorPayments, ['/vendor-payments']);
 
   const dateRange = useMemo(() => {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    const today = localDateKey(now);
     switch (dateFilter) {
       case 'today':
         return { start: today, end: today };
@@ -42,7 +52,7 @@ const Reports = () => {
         const day = now.getDay();
         const start = new Date(now);
         start.setDate(now.getDate() - day);
-        return { start: start.toISOString().split('T')[0], end: today };
+        return { start: localDateKey(start), end: today };
       }
       case 'thisMonth':
         return { start: today.substring(0, 7) + '-01', end: today };
@@ -55,19 +65,28 @@ const Reports = () => {
     }
   }, [dateFilter, customStart, customEnd]);
 
+  // Records are written as YYYY-MM-DD, but a value that carries a time
+  // component ("2026-10-03T09:15:00Z") would fail a plain string range check
+  // against an end date of "2026-10-03" and silently drop out of the report.
+  // Normalising keeps every record inside the range it belongs to.
+  const inRange = useCallback((value: string | undefined) => {
+    const day = typeof value === 'string' ? value.slice(0, 10) : '';
+    return day >= dateRange.start && day <= dateRange.end;
+  }, [dateRange]);
+
   const filteredBills = useMemo(() => {
-    return bills.filter(b => b.date >= dateRange.start && b.date <= dateRange.end);
-  }, [bills, dateRange]);
+    return bills.filter(b => inRange(b.date));
+  }, [bills, inRange]);
 
   const filteredExpenses = useMemo(() => {
-    return expenses.filter(e => e.date >= dateRange.start && e.date <= dateRange.end);
-  }, [expenses, dateRange]);
+    return expenses.filter(e => inRange(e.date));
+  }, [expenses, inRange]);
 
   // Purchases from vendors (type === 'purchase') are treated as investment: the
   // cost of materials/stock acquired, deducted from revenue to show real profit.
   const filteredInvestments = useMemo(() => {
-    return vendorPayments.filter(p => p.type === 'purchase' && p.date >= dateRange.start && p.date <= dateRange.end);
-  }, [vendorPayments, dateRange]);
+    return vendorPayments.filter(p => p.type === 'purchase' && inRange(p.date));
+  }, [vendorPayments, inRange]);
 
   const reportData = useMemo(() => {
     // Monthly revenue trend (last 12 months)
@@ -123,11 +142,14 @@ const Reports = () => {
       .sort((a, b) => b.value - a.value)
       .slice(0, 6);
 
-    // Customer-wise sales
+    // Customer-wise sales.
+    // Cash invoices are not linked to a customer record (their id is empty), so
+    // keying on id alone merged every cash sale into one nameless row.
     const customerSales: Record<string, { name: string; total: number; billCount: number; paid: number; pending: number }> = {};
     filteredBills.forEach(b => {
-      const key = b.customer.id;
-      if (!customerSales[key]) customerSales[key] = { name: b.customer.name, total: 0, billCount: 0, paid: 0, pending: 0 };
+      const name = (b.customer?.name || '').trim() || 'Cash / Walk-in';
+      const key = b.customer?.id || `name:${name.toLowerCase()}`;
+      if (!customerSales[key]) customerSales[key] = { name, total: 0, billCount: 0, paid: 0, pending: 0 };
       customerSales[key].total += b.grandTotal;
       customerSales[key].billCount += 1;
       if (b.status === 'Paid') customerSales[key].paid += b.grandTotal;
@@ -159,6 +181,16 @@ const Reports = () => {
     const totalBills = filteredBills.length;
     const collectionRate = totalBills > 0 ? (paidBills / totalBills) * 100 : 0;
 
+    // Money actually collected vs. still owed. Billing count alone hides a
+    // single large unpaid invoice behind many small paid ones.
+    const collectedRevenue = filteredBills
+      .filter(b => b.status === 'Paid')
+      .reduce((sum, b) => sum + b.grandTotal, 0);
+    const outstandingRevenue = filteredBills
+      .filter(b => b.status !== 'Paid')
+      .reduce((sum, b) => sum + b.grandTotal, 0);
+    const collectionRateByAmount = totalRevenue > 0 ? (collectedRevenue / totalRevenue) * 100 : 0;
+
     // Monthly comparison
     const thisMonth = new Date().toISOString().slice(0, 7);
     const lastMonthDate = new Date();
@@ -179,6 +211,7 @@ const Reports = () => {
       profitOverTime, dailySales, topServices, customerSalesList,
       inventoryValue, lowStockValue, expenseBreakdown,
       totalRevenue, totalExpenses, totalInvestment, totalCosts, profit, paidBills, totalBills, collectionRate,
+      collectedRevenue, outstandingRevenue, collectionRateByAmount,
       thisMonthRevenue, lastMonthRevenue, thisMonthExpenses, lastMonthExpenses, thisMonthInvestment, lastMonthInvestment,
       revenueChange, expenseChange,
     };
@@ -191,7 +224,10 @@ const Reports = () => {
       ['Total Expenses', `NPR ${reportData.totalExpenses.toLocaleString()}`],
       ['Total Purchases (Investment)', `NPR ${reportData.totalInvestment.toLocaleString()}`],
       ['Net Profit', `NPR ${reportData.profit.toLocaleString()}`],
-      ['Collection Rate', `${reportData.collectionRate.toFixed(1)}%`],
+      ['Collected (Paid Invoices)', `NPR ${reportData.collectedRevenue.toLocaleString()}`],
+      ['Outstanding (Receivables)', `NPR ${reportData.outstandingRevenue.toLocaleString()}`],
+      ['Collection Rate (by amount)', `${reportData.collectionRateByAmount.toFixed(1)}%`],
+      ['Collection Rate (by invoice count)', `${reportData.collectionRate.toFixed(1)}%`],
       ['Total Bills', `${reportData.totalBills}`],
       ['Paid Bills', `${reportData.paidBills}`],
       [],
@@ -208,7 +244,7 @@ const Reports = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `report-${localDateKey()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -312,10 +348,32 @@ const Reports = () => {
           <div className="flex justify-between items-start">
             <div>
               <div className="text-sm font-bold uppercase tracking-wider text-gray-400">Collection Rate</div>
-              <div className="text-3xl font-black mt-3 text-orange-600">{reportData.collectionRate.toFixed(1)}%</div>
-              <p className="text-xs text-gray-500 mt-2">{reportData.paidBills} of {reportData.totalBills} bills paid</p>
+              <div className="text-3xl font-black mt-3 text-orange-600">{reportData.collectionRateByAmount.toFixed(1)}%</div>
+              <p className="text-xs text-gray-500 mt-2">
+                Collected NPR {reportData.collectedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })} of NPR {reportData.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {reportData.paidBills} of {reportData.totalBills} invoices paid
+              </p>
             </div>
             <Users className="w-8 h-8 text-orange-600 opacity-20" />
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="text-sm font-bold uppercase tracking-wider text-gray-400">Outstanding (Receivables)</div>
+              <div className={`text-3xl font-black mt-3 ${reportData.outstandingRevenue > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                NPR {reportData.outstandingRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {reportData.outstandingRevenue > 0
+                  ? 'Billed but not yet paid in this period'
+                  : 'Nothing unpaid in this period'}
+              </p>
+            </div>
+            <Users className="w-8 h-8 text-amber-600 opacity-20" />
           </div>
         </Card>
       </div>

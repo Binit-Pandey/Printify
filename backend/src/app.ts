@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -44,7 +44,12 @@ export function createApp() {
     },
     credentials: true,
   }));
-  app.use(express.json());
+  // Body size limit. Express defaults to 100kb, which silently rejects expense
+  // receipts (base64 photos) and settings data imports with
+  // "request entity too large". Allow up to 25mb, which comfortably covers a
+  // 5mb receipt plus normal record payloads.
+  app.use(express.json({ limit: '25mb' }));
+  app.use(express.urlencoded({ limit: '25mb', extended: true }));
 
   app.use('/api/customers', customersRouter);
   app.use('/api/inventory', inventoryRouter);
@@ -71,8 +76,23 @@ export function createApp() {
     });
   }
 
+  // Unknown API endpoints must answer with JSON. Falling through to Express's
+  // default 404 returns an HTML page, which the frontend cannot parse.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Endpoint not found' });
+  });
+
   // Must be registered AFTER all routes
   app.use(errorHandler);
+
+  // Final safety net. Anything that escapes errorHandler (a throw inside the
+  // CORS callback, an unhandled rejection in middleware) would otherwise reach
+  // Express's default handler, which replies with an HTML page. The frontend
+  // cannot parse that and shows a vague "server could not complete" message, so
+  // every failure is guaranteed to come back as JSON with a real reason.
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    errorHandler(err as Error & { status?: number }, _req, res, _next);
+  });
 
   return app;
 }

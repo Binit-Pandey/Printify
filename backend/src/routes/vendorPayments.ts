@@ -23,19 +23,33 @@ router.get('/:vendorId', wrap((req, res) => {
 }));
 
 router.post('/', wrap((req, res) => {
-  const p = req.body;
+  const p = req.body ?? {};
+  const vendorId = p.vendorId as string;
+  if (!vendorId) {
+    res.status(400).json({ error: 'A vendor is required' });
+    return;
+  }
+  const payment = {
+    id: p.id as string,
+    vendorId,
+    amount: Number(p.amount ?? 0) || 0,
+    date: (p.date as string) ?? new Date().toISOString().slice(0, 10),
+    type: (p.type as string) || 'payment',
+    description: (p.description as string) || '',
+    dueDate: (p.dueDate as string) || null,
+  };
   db.prepare(`
     INSERT INTO vendor_payments (id, vendorId, amount, date, type, description, dueDate)
     VALUES (@id, @vendorId, @amount, @date, @type, @description, @dueDate)
-  `).run({ ...p, dueDate: p.dueDate || null });
+  `).run(payment);
 
   const balance = db.prepare(`
     SELECT COALESCE(SUM(CASE WHEN type = 'purchase' THEN amount ELSE -amount END), 0) as total
     FROM vendor_payments WHERE vendorId = ?
-  `).get(p.vendorId) as { total: number };
-  db.prepare('UPDATE vendors SET outstandingBalance = ? WHERE id = ?').run(balance.total, p.vendorId);
+  `).get(vendorId) as { total: number };
+  db.prepare('UPDATE vendors SET outstandingBalance = ? WHERE id = ?').run(balance.total, vendorId);
 
-  res.status(201).json(p);
+  res.status(201).json(payment);
 }));
 
 router.delete('/:id', wrap((req, res) => {

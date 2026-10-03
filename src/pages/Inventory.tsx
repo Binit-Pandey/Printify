@@ -6,6 +6,8 @@ import { Plus, Search, Edit2, Trash2, X, AlertTriangle, Check } from 'lucide-rea
 import { useFilter } from '../hooks/useFilter';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
+import { newId } from '../utils/id';
+import { localDateKey } from '../utils/date';
 
 const Inventory = () => {
   const { inventory, vendors, addInventoryItem, updateInventoryItem, deleteInventoryItem, addVendorPayment } = useStore();
@@ -76,7 +78,7 @@ const Inventory = () => {
     }
 
     const newItem: InventoryItem = {
-      id: crypto.randomUUID(),
+      id: newId(),
       name: formData.name!,
       category: formData.category!,
       unit: formData.unit!,
@@ -102,10 +104,10 @@ const Inventory = () => {
       if (vendor && total > 0) {
         try {
           const vp: VendorPayment = {
-            id: crypto.randomUUID(),
+            id: newId(),
             vendorId: vendor.id,
             amount: total,
-            date: new Date().toISOString().split('T')[0],
+            date: localDateKey(),
             type: 'purchase',
             description: `Purchase: ${formData.name} (${formData.quantity} ${formData.unit})`,
             dueDate: dueDate || undefined,
@@ -132,24 +134,38 @@ const Inventory = () => {
     setDueDate('');
   };
 
-  const handleUpdateItem = () => {
+  const handleUpdateItem = async () => {
     if (!validateForm() || !editingItem) return;
     const updated: InventoryItem = {
       ...editingItem,
       ...formData,
       status: (formData.quantity || 0) > 20 ? 'In Stock' : (formData.quantity || 0) > 0 ? 'Low Stock' : 'Out of Stock',
     };
-    updateInventoryItem(updated);
+    try {
+      await updateInventoryItem(updated);
+    } catch (e: any) {
+      setToast(e?.message || 'Failed to update item');
+      setToastType('error');
+      return;
+    }
     resetForm();
     setToast('Inventory item updated');
+    setToastType('success');
   };
 
-  const handleDeleteConfirm = () => {
-    if (deleteTarget) {
-      deleteInventoryItem(deleteTarget.id);
-      setDeleteTarget(null);
-      setToast('Item removed from inventory');
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    try {
+      await deleteInventoryItem(target.id);
+    } catch (e: any) {
+      setToast(e?.message || 'Failed to remove item');
+      setToastType('error');
+      return;
     }
+    setDeleteTarget(null);
+    setToast('Item removed from inventory');
+    setToastType('success');
   };
 
   const getStatusColor = (status: string) => {
@@ -386,7 +402,7 @@ const Inventory = () => {
                     type="date"
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
+                    min={localDateKey()}
                     className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none"
                   />
                   <p className="text-xs text-orange-500 mt-1">When is the payment due?</p>

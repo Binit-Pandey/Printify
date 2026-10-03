@@ -113,4 +113,8 @@ export interface CompanySettings {
   smtpUser?: string;
   smtpPass?: string;
   smtpFrom?: string;
+  /** Whether SMTP credentials are stored (never reveals the password itself). */
+  smtpConfigured?: boolean;
+  /** Whether this client currently holds the SMTP unlock. */
+  smtpUnlocked?: boolean;
 }

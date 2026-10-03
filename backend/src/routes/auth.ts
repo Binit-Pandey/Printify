@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { scryptSync, randomBytes, timingSafeEqual, randomInt } from 'crypto';
 import { db } from '../db';
 import { wrap } from './wrap';
-import { createMockToken } from '../middleware/auth';
+import { createMockToken, authenticate, type AuthenticatedRequest } from '../middleware/auth';
 import { mockUsers, mockUserPassword } from '../mockUsers';
 import { sendOtpEmail, sendPasswordResetEmail } from '../email';
 
@@ -264,6 +264,85 @@ router.post('/login', wrap(async (req, res) => {
   }
 
   res.status(401).json({ error: 'Invalid credentials' });
+}));
+
+// ── Current session ─────────────────────────────────────────────────────────
+// Lets the renderer confirm that the token it holds is still accepted, instead
+// of guessing from a failed request. Used to tell "this one request was
+// rejected" apart from "the whole session is dead".
+router.get('/me', authenticate, wrap(async (req: AuthenticatedRequest, res) => {
+  const u = req.user!;
+  res.json({
+    user: {
+      id: u.id,
+      company_name: u.company_name,
+      full_name: u.full_name,
+      name: u.name,
+      email: u.email,
+      username: u.username,
+      role: u.role,
+      email_verified: !!u.email_verified,
+    },
+  });
+}));
+
+// ── Logout ──────────────────────────────────────────────────────────────────
+router.post('/logout', authenticate, wrap(async (req: AuthenticatedRequest, res) => {
+  const header = req.headers.authorization ?? '';
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(header.slice(7));
+  res.json({ message: 'Signed out' });
+}));
+
+// ── Change password (signed-in user) ────────────────────────────────────────
+// Lets the super admin (and any signed-in user) rotate their own password
+// without going through the emailed reset flow, which needs SMTP to be working
+// and unlocked. The current password must be supplied so a borrowed session
+// cannot take the account over.
+router.post('/change-password', authenticate, wrap(async (req: AuthenticatedRequest, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body ?? {};
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: 'Current and new password are required' });
+    return;
+  }
+  if (confirmPassword !== undefined && confirmPassword !== newPassword) {
+    res.status(400).json({ error: 'New passwords do not match' });
+    return;
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < 6) {
+    res.status(400).json({ error: 'Password must be at least 6 characters' });
+    return;
+  }
+  if (newPassword.length > 200) {
+    res.status(400).json({ error: 'Password is too long' });
+    return;
+  }
+  if (newPassword === currentPassword) {
+    res.status(400).json({ error: 'New password must be different from the current one' });
+    return;
+  }
+
+  const row = db.prepare('SELECT id, password_hash FROM users WHERE id = ?')
+    .get(req.user!.id) as { id: string; password_hash: string } | undefined;
+  if (!row || !row.password_hash) {
+    // A mock/seeded session has no stored hash to check against.
+    res.status(400).json({ error: 'This account has no password set. Use the reset flow instead.' });
+    return;
+  }
+
+  if (!verifyPassword(currentPassword, row.password_hash)) {
+    res.status(401).json({ error: 'Current password is incorrect' });
+    return;
+  }
+
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), row.id);
+
+  // Sign out every other device, then keep this one signed in so the admin is
+  // not logged out of the app they are changing the password in.
+  const currentToken = (req.headers.authorization ?? '').slice(7);
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(row.id, currentToken);
+
+  res.json({ message: 'Password changed successfully', reauthenticate: currentToken === '' });
 }));
 
 // ── Forgot password ─────────────────────────────────────────────────────────

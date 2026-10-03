@@ -33,12 +33,17 @@ function RequireRole({ roles, children }: { roles: string[]; children: React.Rea
 function App() {
   const { user } = useAuth();
   const { initialize, isInitialized } = useStore();
+  const userId = user?.id;
+  const userRole = user?.role;
 
   useEffect(() => {
-    initialize(user?.role).catch(console.error);
-  }, [initialize, user?.role]);
+    // Loading data requires a credential. Running this while signed out only
+    // produced a burst of requests that were guaranteed to answer 401.
+    if (!userId) return;
+    initialize(userRole).catch(console.error);
+  }, [initialize, userId, userRole]);
 
-  if (!isInitialized) {
+  if (!isInitialized && userId) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="text-center">

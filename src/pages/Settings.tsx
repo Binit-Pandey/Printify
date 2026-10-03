@@ -1,18 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../contexts/store';
+import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Save, AlertCircle, Sun, Moon, Upload, Download, Database, Image, Send } from 'lucide-react';
+import { Save, AlertCircle, Sun, Moon, Upload, Download, Database, Image, Send, Lock, KeyRound, CheckCircle2 } from 'lucide-react';
 import { api } from '../services/api';
+import { fileToLogoDataUrl, isUploadedLogo } from '../utils/image';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
+import { localDateKey } from '../utils/date';
 
 const Settings = () => {
   const { settings, updateSettings, initialize } = useStore();
   const { dark, toggle: toggleTheme } = useTheme();
+  const { user } = useAuth();
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwDone, setPwDone] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [formData, setFormData] = useState(settings);
+  // True while the user has unsaved edits. Live refreshes push a fresh
+  // `settings` object on every data change, so syncing unconditionally would
+  // wipe whatever is half-typed in the form.
+  const dirtyRef = useRef(false);
+  // Mirror of dirtyRef that React can re-render on (the ref alone cannot).
+  const [hasUnsaved, setHasUnsaved] = useState(false);
 
-  // Keep formData in sync when the store's settings are updated (e.g. after data import)
+  const markDirty = (value: boolean) => {
+    dirtyRef.current = value;
+    setHasUnsaved(value);
+  };
+
+  // Adopt settings pushed in by the store (first load, data import, DB
+  // restore) — but never while the user has unsaved edits.
   useEffect(() => {
+    if (dirtyRef.current) return;
     setFormData(settings);
   }, [settings]);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
@@ -38,8 +59,53 @@ const Settings = () => {
   };
 
   const handleChange = (field: keyof typeof formData, value: any) => {
+    markDirty(true);
     setFormData({ ...formData, [field]: value });
     if (formErrors[field]) setFormErrors({ ...formErrors, [field]: '' });
+  };
+
+  // ── Logo upload ────────────────────────────────────────────────────────────
+  const [logoPreview, setLogoPreview] = useState('');
+  const [isReadingLogo, setIsReadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  // Show the stored logo only when it is a real uploaded image. Legacy records
+  // hold a bare path such as "/logo.png", which renders as a broken image.
+  useEffect(() => {
+    setLogoPreview(isUploadedLogo(formData.logo) ? formData.logo! : '');
+  }, [formData.logo]);
+
+  const handleLogoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setIsReadingLogo(true);
+    try {
+      const dataUrl = await fileToLogoDataUrl(file);
+      setLogoPreview(dataUrl);
+      handleChange('logo', dataUrl);
+      setToastType('success');
+      setToast('Logo added. Remember to save your changes.');
+    } catch (err: any) {
+      setToastType('error');
+      setToast(err?.message || 'That image could not be used');
+    } finally {
+      setIsReadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoPreview('');
+    handleChange('logo', '');
+  };
+
+  const handleDiscard = () => {
+    markDirty(false);
+    setFormErrors({});
+    setFormData(settings);
+    setToastType('success');
+    setToast('Unsaved changes discarded');
   };
 
   const handleSave = async () => {
@@ -47,11 +113,12 @@ const Settings = () => {
     setIsSaving(true);
     try {
       await updateSettings(formData);
+      markDirty(false);
       setToastType('success');
       setToast('Settings saved successfully');
-    } catch {
+    } catch (e: any) {
       setToastType('error');
-      setToast('Failed to save settings');
+      setToast(e?.message || 'Failed to save settings');
     } finally {
       setIsSaving(false);
     }
@@ -64,7 +131,7 @@ const Settings = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `printpress-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `printpress-backup-${localDateKey()}.json`;
       a.click();
       URL.revokeObjectURL(url);
       setToastType('success');
@@ -124,7 +191,7 @@ const Settings = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `printpress-db-backup-${new Date().toISOString().split('T')[0]}.db`;
+      a.download = `printpress-db-backup-${localDateKey()}.db`;
       a.click();
       URL.revokeObjectURL(url);
       setToastType('success');
@@ -167,6 +234,88 @@ const Settings = () => {
   const [testEmailTo, setTestEmailTo] = useState('');
   const [isTestingEmail, setIsTestingEmail] = useState(false);
 
+  // SMTP is a separate secret: the fields stay hidden and unsaved until the
+  // verification token is accepted by the backend.
+  const [smtpToken, setSmtpToken] = useState('');
+  const [isUnlockingSmtp, setIsUnlockingSmtp] = useState(false);
+  const [smtpUnlockError, setSmtpUnlockError] = useState('');
+  const [smtpUnlocked, setSmtpUnlocked] = useState(!!formData.smtpUnlocked);
+
+  const handleUnlockSmtp = async () => {
+    if (!smtpToken.trim()) return;
+    setIsUnlockingSmtp(true);
+    setSmtpUnlockError('');
+    try {
+      await api.settings.unlockSmtp(smtpToken.trim());
+      // Pull the real values now that the backend will disclose them. Only the
+      // SMTP fields are adopted so unsaved edits elsewhere in the form survive,
+      // and unlocking is not itself an edit, so the form stays clean.
+      const fresh = await api.settings.get();
+      setFormData((prev) => ({
+        ...prev,
+        smtpHost: fresh.smtpHost,
+        smtpPort: fresh.smtpPort,
+        smtpSecure: fresh.smtpSecure,
+        smtpUser: fresh.smtpUser,
+        smtpPass: fresh.smtpPass,
+        smtpFrom: fresh.smtpFrom,
+        smtpUnlocked: true,
+      }));
+      setSmtpToken('');
+      setSmtpUnlocked(true);
+      setToastType('success');
+      setToast('SMTP settings unlocked');
+    } catch (e: any) {
+      setSmtpUnlockError(e?.message || 'Incorrect verification token');
+    } finally {
+      setIsUnlockingSmtp(false);
+    }
+  };
+
+  const handleLockSmtp = async () => {
+    try {
+      await api.settings.lockSmtp();
+    } catch {
+      // Locking locally is enough even if the request fails.
+    }
+    setSmtpUnlocked(false);
+    setSmtpToken('');
+    setSmtpUnlockError('');
+    // Clear the revealed secrets from local form state.
+    setFormData((prev) => ({ ...prev, smtpPass: '' }));
+    setToastType('success');
+    setToast('SMTP settings locked');
+  };
+
+  const handleChangePassword = async () => {
+    setPwError('');
+    setPwDone(false);
+    if (pwForm.newPassword.length < 6) {
+      setPwError('New password must be at least 6 characters.');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwError('New passwords do not match.');
+      return;
+    }
+    if (pwForm.newPassword === pwForm.currentPassword) {
+      setPwError('New password must be different from the current one.');
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await api.auth.changePassword(pwForm);
+      setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPwDone(true);
+      setToastType('success');
+      setToast('Password changed successfully');
+    } catch (e: any) {
+      setPwError(e?.message || 'Could not change the password');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleTestEmail = async () => {
     if (!testEmailTo.trim()) return;
     setIsTestingEmail(true);
@@ -175,16 +324,16 @@ const Settings = () => {
       setToastType('success');
       setToast(res.message || 'Test email sent successfully');
     } catch (e: any) {
-      const raw = e?.message || 'Failed to send test email';
-      const parsed = raw.match(/\{"error":"((?:[^"\\]|\\.)*)"\}/);
       setToastType('error');
-      setToast(parsed ? parsed[1] : raw);
+      setToast(e?.message || 'Failed to send test email');
     } finally {
       setIsTestingEmail(false);
     }
   };
 
-  const smtpConfigured = Boolean(formData.smtpUser && formData.smtpPass);
+  const smtpConfigured = smtpUnlocked
+    ? Boolean(formData.smtpUser && formData.smtpPass)
+    : Boolean(formData.smtpConfigured);
 
   return (
     <div className="space-y-8 max-w-4xl">
@@ -210,26 +359,58 @@ const Settings = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Logo URL</label>
-            <div className="flex gap-3 items-start">
-              <div className="flex-1">
-                <input
-                  value={formData.logo || ''}
-                  onChange={(e) => handleChange('logo', e.target.value)}
-                  placeholder="e.g. https://example.com/logo.png"
-                  className="w-full p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <div className="w-16 h-16 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden flex items-center justify-center bg-gray-50 dark:bg-gray-800 flex-shrink-0">
-                {formData.logo ? (
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Company Logo</label>
+            <div className="flex gap-4 items-start">
+              <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-700 overflow-hidden flex items-center justify-center bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                {logoPreview ? (
                   <img
-                    src={formData.logo}
-                    alt="Logo"
-                    className="w-full h-full object-contain"
+                    src={logoPreview}
+                    alt="Company logo"
+                    className="w-full h-full object-contain p-1"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                 ) : (
-                  <Image className="w-6 h-6 text-gray-400" />
+                  <Image className="w-8 h-8 text-gray-400" />
+                )}
+              </div>
+
+              <div className="flex-1">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  onChange={handleLogoFileChange}
+                  className="hidden"
+                />
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={isReadingLogo}
+                    className="flex items-center gap-2 px-5 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-colors disabled:opacity-50 font-bold"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {isReadingLogo ? 'Processing...' : logoPreview ? 'Replace logo' : 'Upload logo'}
+                  </button>
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="px-5 py-3 border-2 border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 rounded-2xl hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors font-bold"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  PNG, JPG, WebP or SVG. Images are resized to fit the invoice automatically.
+                  Click Save Changes to apply.
+                </p>
+                {!logoPreview && settings.logo && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                    The previous logo was saved as a link ({settings.logo}) and could not be displayed.
+                    Upload a file to replace it.
+                  </p>
                 )}
               </div>
             </div>
@@ -345,7 +526,48 @@ const Settings = () => {
           below — settings are saved to this device and take effect immediately, no restart needed.
         </p>
 
-        <div className="space-y-6">
+        {!smtpUnlocked ? (
+          <div className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-8 text-center">
+            <Lock className="w-10 h-10 text-gray-400 mx-auto mb-4" />
+            <p className="font-bold text-lg text-gray-800 dark:text-gray-100">SMTP settings are locked</p>
+            <p className="text-sm text-gray-500 mt-2 max-w-md mx-auto">
+              These fields hold a live mailbox password. Enter the verification token to view or change them.
+              {formData.smtpConfigured && ' Email sending is currently configured on this device.'}
+            </p>
+
+            <div className="max-w-sm mx-auto mt-6">
+              <input
+                type="password"
+                value={smtpToken}
+                onChange={(e) => { setSmtpToken(e.target.value); setSmtpUnlockError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleUnlockSmtp(); }}
+                placeholder="Verification token"
+                autoComplete="off"
+                className="w-full p-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              {smtpUnlockError && <p className="text-red-500 text-xs mt-2 text-left">{smtpUnlockError}</p>}
+              <button
+                onClick={handleUnlockSmtp}
+                disabled={isUnlockingSmtp || !smtpToken.trim()}
+                className="mt-3 w-full px-5 py-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-bold"
+              >
+                {isUnlockingSmtp ? 'Verifying...' : 'Unlock'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={handleLockSmtp}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 text-sm font-bold text-gray-700 dark:text-gray-300"
+              >
+                <Lock className="w-4 h-4" />
+                Lock again
+              </button>
+            </div>
+
+            <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">SMTP Host</label>
@@ -445,7 +667,9 @@ const Settings = () => {
               </button>
             </div>
           </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Appearance */}
@@ -566,8 +790,89 @@ const Settings = () => {
         </div>
       </div>
 
+      {/* Account Security — password change for the signed-in user */}
+      <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 shadow-sm border border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-3 mb-2">
+          <KeyRound className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-bold">Account Security</h2>
+        </div>
+        <p className="text-sm text-gray-500 mb-6">
+          Change the password for <strong>{user?.username || user?.email}</strong>. You will stay signed in on this
+          device, and any other signed-in devices will be signed out.
+        </p>
+
+        {pwError && (
+          <div className="mb-4 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-900/20 dark:text-rose-300">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{pwError}</span>
+          </div>
+        )}
+        {pwDone && (
+          <div className="mb-4 flex items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Password changed successfully.</span>
+          </div>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Current password</label>
+            <input
+              type="password"
+              value={pwForm.currentPassword}
+              onChange={(e) => { setPwForm({ ...pwForm, currentPassword: e.target.value }); setPwError(''); }}
+              autoComplete="current-password"
+              className="w-full rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">New password</label>
+            <input
+              type="password"
+              value={pwForm.newPassword}
+              onChange={(e) => { setPwForm({ ...pwForm, newPassword: e.target.value }); setPwError(''); }}
+              autoComplete="new-password"
+              className="w-full rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 outline-none focus:border-blue-500 transition-colors"
+            />
+            {pwForm.newPassword && pwForm.newPassword.length < 6 && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Must be at least 6 characters.</p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Confirm new password</label>
+            <input
+              type="password"
+              value={pwForm.confirmPassword}
+              onChange={(e) => { setPwForm({ ...pwForm, confirmPassword: e.target.value }); setPwError(''); }}
+              autoComplete="new-password"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleChangePassword(); }}
+              className="w-full rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 outline-none focus:border-blue-500 transition-colors"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleChangePassword}
+          disabled={isChangingPassword || !pwForm.currentPassword || !pwForm.newPassword}
+          className={`mt-5 px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+            isChangingPassword ? 'bg-blue-400 text-white cursor-wait' : 'bg-blue-600 text-white hover:bg-blue-700'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          <KeyRound className="w-5 h-5" />
+          {isChangingPassword ? 'Changing...' : 'Change password'}
+        </button>
+      </div>
+
       {/* Save Button */}
       <div className="flex gap-3">
+        {hasUnsaved && (
+          <button
+            onClick={handleDiscard}
+            className="px-6 py-4 rounded-2xl font-bold text-lg border-2 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            Discard changes
+          </button>
+        )}
         <button
           onClick={handleSave}
           disabled={isSaving}

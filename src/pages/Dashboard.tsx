@@ -6,9 +6,12 @@ import type { VendorPayment } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import Card from '../components/ui/Card';
 import Toast from '../components/Toast';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { Expense } from '../types';
 import { ArrowUpRight, BarChart3, Clock3, Edit2, Paperclip, Plus, Receipt, TrendingDown, TrendingUp, Users, Wallet } from 'lucide-react';
+import { newId } from '../utils/id';
+import { localDateKey, localMonthKey } from '../utils/date';
 
 const PIE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
@@ -35,7 +38,7 @@ function StaffExpenseDashboard() {
   const { expenses, addExpense, updateExpense, canEditOwnExpense } = useStore();
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateKey());
   const [notes, setNotes] = useState('');
   const [receiptName, setReceiptName] = useState('');
   const [receiptData, setReceiptData] = useState('');
@@ -53,7 +56,7 @@ function StaffExpenseDashboard() {
   const resetForm = () => {
     setCategory('');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(localDateKey());
     setNotes('');
     setReceiptName('');
     setReceiptData('');
@@ -95,7 +98,7 @@ function StaffExpenseDashboard() {
     setError('');
     try {
       const payload: Expense = {
-        id: editingId ?? crypto.randomUUID(),
+        id: editingId ?? newId(),
         category,
         amount: parseFloat(amount),
         reason: notes,
@@ -301,25 +304,36 @@ const Dashboard = () => {
   const { dark } = useTheme();
   const [vendorPayments, setVendorPayments] = useState<VendorPayment[]>([]);
 
-  useEffect(() => {
-    api.vendorPayments.listAll().then(setVendorPayments).catch(() => setVendorPayments([]));
+  const loadVendorPayments = useCallback(async () => {
+    try {
+      setVendorPayments(await api.vendorPayments.listAll());
+    } catch {
+      setVendorPayments([]);
+    }
   }, []);
 
+  // Purchases feed the profit figures here, so refresh them after any vendor
+  // payment is recorded rather than showing whatever was true at mount.
+  useAutoRefresh(loadVendorPayments, ['/vendor-payments']);
+
   const metrics = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localDateKey();
+    const thisMonth = localMonthKey();
     const todayBills = bills.filter(b => b.date === today);
     const todaySales = todayBills.reduce((sum, b) => sum + b.grandTotal, 0);
     const todayExpenses = expenses.filter(e => e.date === today).reduce((sum, e) => sum + e.amount, 0);
     const todayPurchases = vendorPayments.filter(p => p.type === 'purchase' && p.date === today).reduce((sum, p) => sum + p.amount, 0);
-    const monthlyRevenue = bills.reduce((sum, b) => sum + b.grandTotal, 0);
-    const monthlyExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const monthlyPurchases = vendorPayments.filter(p => p.type === 'purchase').reduce((sum, p) => sum + p.amount, 0);
+    // These feed the card labelled "Monthly profit", so they are scoped to the
+    // current calendar month rather than summing the whole database.
+    const monthlyRevenue = bills.filter(b => b.date.startsWith(thisMonth)).reduce((sum, b) => sum + b.grandTotal, 0);
+    const monthlyExpenses = expenses.filter(e => e.date.startsWith(thisMonth)).reduce((sum, e) => sum + e.amount, 0);
+    const monthlyPurchases = vendorPayments.filter(p => p.type === 'purchase' && p.date.startsWith(thisMonth)).reduce((sum, p) => sum + p.amount, 0);
     const pending = bills.filter(b => b.status === 'Pending');
-    return { todaySales, todayBillsCount: todayBills.length, todayExpenses, todayProfit: todaySales - todayExpenses - todayPurchases, monthlyRevenue, monthlyProfit: monthlyRevenue - monthlyExpenses - monthlyPurchases, activeCustomers: customers.length, pendingBills: pending.length, pendingAmount: pending.reduce((s, b) => s + b.grandTotal, 0) };
+    return { todaySales, todayBillsCount: todayBills.length, todayExpenses, todayProfit: todaySales - todayExpenses - todayPurchases, monthlyRevenue, monthlyExpenses, monthlyProfit: monthlyRevenue - monthlyExpenses - monthlyPurchases, activeCustomers: customers.length, pendingBills: pending.length, pendingAmount: pending.reduce((s, b) => s + b.grandTotal, 0) };
   }, [bills, customers, expenses, vendorPayments]);
   const chartData = useMemo(() => {
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const last7Days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return { name: days[d.getDay()], date: d.toISOString().split('T')[0], sales: 0, expenses: 0, purchases: 0 }; });
+    const last7Days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); return { name: days[d.getDay()], date: localDateKey(d), sales: 0, expenses: 0, purchases: 0 }; });
     last7Days.forEach(day => { day.sales = bills.filter(b => b.date === day.date).reduce((sum, b) => sum + b.grandTotal, 0); day.expenses = expenses.filter(e => e.date === day.date).reduce((sum, e) => sum + e.amount, 0); day.purchases = vendorPayments.filter(p => p.type === 'purchase' && p.date === day.date).reduce((sum, p) => sum + p.amount, 0); });
     const serviceMap: Record<string, number> = {}; bills.forEach(b => b.items.forEach(item => { serviceMap[item.name] = (serviceMap[item.name] || 0) + item.quantity; }));
     const topServices = Object.entries(serviceMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 5);
@@ -331,7 +345,7 @@ const Dashboard = () => {
   if (user?.role === 'staff') return <StaffExpenseDashboard />;
 
   return <div className="flex flex-col gap-7"><header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-sm font-semibold text-blue-600 dark:text-blue-400">Print floor overview</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Dashboard</h1><p className="mt-2 text-slate-500 dark:text-slate-400">A real-time view of your printing press.</p></div><div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400"><span className="size-2 rounded-full bg-emerald-500" />Live data</div></header>
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"><MetricCard label="Today&apos;s sales" value={`NPR ${metrics.todaySales.toLocaleString()}`} icon={Wallet} /><MetricCard label="Today&apos;s profit" value={`NPR ${metrics.todayProfit.toLocaleString()}`} icon={metrics.todayProfit >= 0 ? TrendingUp : TrendingDown} tone={metrics.todayProfit >= 0 ? 'emerald' : 'rose'} /><MetricCard label="Active customers" value={String(metrics.activeCustomers)} icon={Users} tone="amber" /><MetricCard label="Pending bills" value={String(metrics.pendingBills)} detail={`NPR ${metrics.pendingAmount.toLocaleString()} outstanding`} icon={Clock3} tone="rose" /><MetricCard label="Monthly profit" value={`NPR ${metrics.monthlyProfit.toLocaleString()}`} detail={`Revenue NPR ${metrics.monthlyRevenue.toLocaleString()}`} icon={BarChart3} tone="violet" /></div>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"><MetricCard label="Today&apos;s sales" value={`NPR ${metrics.todaySales.toLocaleString()}`} icon={Wallet} /><MetricCard label="Today&apos;s profit" value={`NPR ${metrics.todayProfit.toLocaleString()}`} icon={metrics.todayProfit >= 0 ? TrendingUp : TrendingDown} tone={metrics.todayProfit >= 0 ? 'emerald' : 'rose'} /><MetricCard label="Active customers" value={String(metrics.activeCustomers)} icon={Users} tone="amber" /><MetricCard label="Pending bills" value={String(metrics.pendingBills)} detail={`NPR ${metrics.pendingAmount.toLocaleString()} outstanding`} icon={Clock3} tone="rose" /><MetricCard label="Monthly profit" value={`NPR ${metrics.monthlyProfit.toLocaleString()}`} detail={`Revenue NPR ${metrics.monthlyRevenue.toLocaleString()} · Expenses NPR ${metrics.monthlyExpenses.toLocaleString()}`} icon={BarChart3} tone="violet" /></div>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3"><Card className="lg:col-span-2"><div className="mb-6 flex items-start justify-between"><div><h2 className="text-lg font-bold">Sales vs costs</h2><p className="mt-1 text-sm text-slate-500">Last seven days (includes vendor purchases)</p></div><ArrowUpRight aria-hidden="true" className="size-5 text-slate-400" /></div><div className="h-80">{chartData.last7Days.some(day => day.sales || day.expenses || day.purchases) ? <ResponsiveContainer width="100%" height="100%"><BarChart data={chartData.last7Days}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#1e293b' : '#e2e8f0'} /><XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} /><YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} /><Tooltip cursor={{ fill: dark ? '#1e293b' : '#f1f5f9' }} contentStyle={{ borderRadius: '12px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#0f172a' : '#ffffff', color: dark ? '#f1f5f9' : '#0f172a' }} formatter={(value, name) => [`NPR ${Number(value ?? 0).toLocaleString()}`, String(name ?? '').replace(/^./, c => c.toUpperCase())]} /><Bar dataKey="sales" fill="#2563eb" radius={[6, 6, 0, 0]} name="Sales" /><Bar dataKey="expenses" fill="#f59e0b" radius={[6, 6, 0, 0]} name="Expenses" /><Bar dataKey="purchases" fill="#8b5cf6" radius={[6, 6, 0, 0]} name="Purchases" /></BarChart></ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center text-center"><BarChart3 aria-hidden="true" className="mb-3 size-8 text-slate-300 dark:text-slate-600" /><p className="font-semibold">No activity this week</p><p className="mt-1 text-sm text-slate-500">Sales, expenses and purchases will appear here.</p></div>}</div></Card>
       <Card><div className="mb-4 flex items-center gap-3"><div className="flex size-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400"><Wallet aria-hidden="true" className="size-4" /></div><div><h2 className="text-lg font-bold">Expense breakdown</h2><p className="text-sm text-slate-500">By category</p></div></div><div className="h-48">{chartData.expenseBreakdown.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={chartData.expenseBreakdown} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={5} dataKey="value">{chartData.expenseBreakdown.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value: number | string | ReadonlyArray<number | string> | undefined) => [`NPR ${Number(value ?? 0).toLocaleString()}`, 'Amount']} /></PieChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No expenses recorded</div>}</div><div className="mt-3 flex flex-col gap-2">{chartData.expenseBreakdown.map((exp, index) => <div key={exp.name} className="flex items-center justify-between text-sm"><div className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} /><span className="truncate text-slate-500 dark:text-slate-400">{exp.name}</span></div><span className="font-semibold">NPR {exp.value.toLocaleString()}</span></div>)}</div></Card></div>
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2"><Card><div className="mb-5"><h2 className="text-lg font-bold">Top selling services</h2><p className="mt-1 text-sm text-slate-500">What customers order most.</p></div><div className="h-72">{chartData.topServices.length ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={chartData.topServices} cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={5} dataKey="value">{chartData.topServices.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip contentStyle={{ borderRadius: '12px', border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`, backgroundColor: dark ? '#0f172a' : '#ffffff' }} /></PieChart></ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-slate-400">No services recorded</div>}</div><div className="mt-4 grid grid-cols-2 gap-3">{chartData.topServices.map((service, index) => <div key={service.name} className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} /><span className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{service.name}</span></div>)}</div></Card><Card><div className="mb-6 flex items-center justify-between"><div><h2 className="text-lg font-bold">Recent bills</h2><p className="mt-1 text-sm text-slate-500">Latest customer transactions.</p></div><Receipt aria-hidden="true" className="size-5 text-slate-400" /></div><BillsTable bills={bills} /></Card></div>

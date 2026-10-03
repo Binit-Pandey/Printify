@@ -7,6 +7,8 @@ import BillForm from '../components/BillForm';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
 import type { Bill } from '../types';
+import { newId } from '../utils/id';
+import { localDateKey } from '../utils/date';
 
 const Bills = () => {
   const { bills, settings, updateBill, deleteBill, addBill } = useStore();
@@ -16,6 +18,7 @@ const Bills = () => {
   const [statusFilter, setStatusFilter] = useState<'All' | 'Paid' | 'Pending'>('All');
   const [deleteTarget, setDeleteTarget] = useState<typeof bills[0] | null>(null);
   const [toast, setToast] = useState('');
+  const [editError, setEditError] = useState('');
 
   const filteredByStatus = useMemo(() => {
     if (statusFilter === 'All') return filteredItems;
@@ -31,48 +34,67 @@ const Bills = () => {
     return { totalBills, paidBills, pendingBills, totalRevenue, paidRevenue };
   }, [bills]);
 
-  const handleToggleStatus = (bill: typeof bills[0]) => {
-    updateBill({ ...bill, status: bill.status === 'Paid' ? 'Pending' : 'Paid' });
-    setToast(`Bill marked as ${bill.status === 'Paid' ? 'Pending' : 'Paid'}`);
-  };
-
-  const handleDeleteConfirm = () => {
-    if (deleteTarget) {
-      deleteBill(deleteTarget.id);
-      setDeleteTarget(null);
-      setToast('Bill deleted');
-      if (selectedBill?.id === deleteTarget.id) setSelectedBill(null);
+  const handleToggleStatus = async (bill: typeof bills[0]) => {
+    const nextStatus = bill.status === 'Paid' ? 'Pending' : 'Paid';
+    try {
+      await updateBill({ ...bill, status: nextStatus });
+      setToast(`Bill marked as ${nextStatus}`);
+    } catch (e: any) {
+      setToast(e?.message || 'Could not update bill status');
     }
   };
 
-  const handleDuplicate = (bill: typeof bills[0]) => {
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    try {
+      await deleteBill(target.id);
+      setDeleteTarget(null);
+      setToast('Bill deleted');
+      if (selectedBill?.id === target.id) setSelectedBill(null);
+    } catch (e: any) {
+      setToast(e?.message || 'Could not delete bill');
+    }
+  };
+
+  const handleDuplicate = async (bill: typeof bills[0]) => {
     const now = new Date();
     const newBillNumber = `INV-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-5)}`;
     const duplicate = {
       ...bill,
-      id: crypto.randomUUID(),
+      id: newId(),
       billNumber: newBillNumber,
-      date: new Date().toISOString().split('T')[0],
+      date: localDateKey(),
       status: 'Pending' as const,
     };
-    addBill(duplicate);
-    setToast('Bill duplicated as new invoice');
+    try {
+      await addBill(duplicate);
+      setToast('Bill duplicated as new invoice');
+    } catch (e: any) {
+      setToast(e?.message || 'Could not duplicate bill');
+    }
   };
 
   const handleEditSubmit = async (bill: Bill) => {
     if (!editingBill) return;
+    const editing = editingBill;
     const updated = {
       ...bill,
-      id: editingBill.id,
-      billNumber: editingBill.billNumber,
-      createdBy: editingBill.createdBy,
+      id: editing.id,
+      billNumber: editing.billNumber,
+      createdBy: editing.createdBy,
     };
-    await updateBill(updated);
-    setEditingBill(null);
-    if (selectedBill?.id === editingBill.id) {
-      setSelectedBill(updated);
+    try {
+      await updateBill(updated);
+      setEditingBill(null);
+      if (selectedBill?.id === editing.id) {
+        setSelectedBill(updated);
+      }
+      setToast('Bill updated');
+    } catch (e: any) {
+      // Keep the modal open so the user can retry or adjust the invoice.
+      setEditError(e?.message || 'Could not save the invoice');
     }
-    setToast('Bill updated');
   };
 
   const handlePrint = () => {
@@ -169,7 +191,7 @@ const Bills = () => {
                           className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-xl transition-colors" title="View">
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button onClick={() => setEditingBill(bill)}
+                        <button onClick={() => { setEditingBill(bill); setEditError(''); }}
                           className="p-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 rounded-xl transition-colors" title="Edit">
                           <Pencil className="w-4 h-4" />
                         </button>
@@ -261,17 +283,23 @@ const Bills = () => {
                 <h2 className="text-xl font-bold">Edit Invoice</h2>
                 <p className="text-gray-500 text-sm mt-0.5">{editingBill.billNumber} · Created by {editingBill.createdBy || 'Admin'}</p>
               </div>
-              <button onClick={() => setEditingBill(null)}
+              <button onClick={() => { setEditingBill(null); setEditError(''); }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
             <div className="p-6">
+              {editError && (
+                <div className="mb-4 p-4 rounded-2xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300">
+                  {editError}
+                </div>
+              )}
               <BillForm
                 key={editingBill.id}
                 initialBill={editingBill}
                 submitLabel="Update Invoice"
                 onSubmit={handleEditSubmit}
+                onError={(msg) => setEditError(msg)}
               />
             </div>
           </div>

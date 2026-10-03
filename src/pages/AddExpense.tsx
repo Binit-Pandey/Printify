@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import type { Expense } from '../types';
 import { Plus, Edit2, Paperclip, Receipt, TrendingDown } from 'lucide-react';
 import Toast from '../components/Toast';
+import { newId } from '../utils/id';
+import { localDateKey } from '../utils/date';
 
 const EXPENSE_CATEGORIES = ['Rent', 'Utilities', 'Supplies', 'Maintenance', 'Salary', 'Transport', 'Other'];
 
@@ -13,7 +16,7 @@ const AddExpense = () => {
   const [canEditOwn, setCanEditOwn] = useState(false);
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateKey());
   const [notes, setNotes] = useState('');
   const [receiptName, setReceiptName] = useState('');
   const [receiptData, setReceiptData] = useState('');
@@ -33,14 +36,13 @@ const AddExpense = () => {
     }
   }, []);
 
-  useEffect(() => {
-    loadMine();
-  }, [loadMine]);
+  // Keep this list in step with writes made here or from the dashboard.
+  useAutoRefresh(loadMine, ['/expenses']);
 
   const resetForm = () => {
     setCategory('');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(localDateKey());
     setNotes('');
     setReceiptName('');
     setReceiptData('');
@@ -82,7 +84,7 @@ const AddExpense = () => {
     setError('');
     try {
       const payload: Expense = {
-        id: editingId ?? crypto.randomUUID(),
+        id: editingId ?? newId(),
         category,
         amount: parseFloat(amount),
         reason: notes,

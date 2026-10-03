@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../services/api';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { Users, Plus, X, Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { User } from '../types';
 import ConfirmModal from '../components/ConfirmModal';
@@ -22,20 +23,23 @@ const StaffManagement = () => {
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState('');
 
-  useEffect(() => {
-    loadStaff();
-  }, []);
-
-  const loadStaff = async () => {
+  const loadStaff = useCallback(async () => {
     try {
       const res = await api.staff.list();
       setStaffList(res.users);
     } catch (err: any) {
+      // The api layer handles an unusable session; anything else is worth
+      // showing rather than leaving an empty table that looks like no staff.
       console.error('Failed to load staff:', err);
+      setError(err?.message || 'Failed to load staff');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Re-read the roster on mount and after any staff write, so accounts created
+  // or removed elsewhere are never a stale snapshot.
+  useAutoRefresh(loadStaff, ['/staff']);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,13 +47,13 @@ const StaffManagement = () => {
     setSubmitting(true);
 
     try {
-      const res = await api.staff.create({ username, fullName, email, password });
-      setStaffList(prev => [...prev, res.user]);
+      await api.staff.create({ username, fullName, email, password });
       setShowModal(false);
       setUsername('');
       setFullName('');
       setEmail('');
       setPassword('');
+      await loadStaff();
     } catch (err: any) {
       setError(err.message || 'Failed to create staff');
     } finally {
@@ -62,9 +66,9 @@ const StaffManagement = () => {
     setDeleting(true);
     try {
       await api.staff.remove(deleteTarget.id);
-      setStaffList(prev => prev.filter(s => s.id !== deleteTarget.id));
-      setToast(`Staff "${deleteTarget.name}" removed`);
       setDeleteTarget(null);
+      setToast(`Staff "${deleteTarget.name}" removed`);
+      await loadStaff();
     } catch (err: any) {
       setError(err.message || 'Failed to remove staff');
     } finally {
@@ -95,6 +99,12 @@ const StaffManagement = () => {
           <Plus className="w-5 h-5" /> Add Staff
         </button>
       </div>
+
+      {error && !showModal && (
+        <p className="mb-4 rounded-lg bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-900 px-4 py-3 text-pink-700 dark:text-pink-300 text-sm font-medium">
+          {error}
+        </p>
+      )}
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
         {loading ? (

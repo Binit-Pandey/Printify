@@ -2,14 +2,23 @@ import type { Customer, InventoryItem, Vendor, VendorPayment, CustomerPayment, E
 
 const BASE = '/api';
 export const TOKEN_KEY = 'printpress_token';
+export const USER_KEY = 'printpress_user';
 
 let authToken: string | null = null;
+let expireNotified = false;
+
+// A failed reload-repair is remembered so a genuinely stale cached session
+// cannot put the renderer into a reload loop.
+const SELF_HEAL_KEY = 'printpress:self-heal-attempted';
 
 export function setAuthToken(token: string | null) {
   authToken = token;
   try {
     if (token) {
       localStorage.setItem(TOKEN_KEY, token);
+      // A real credential means the last reload-repair attempt, if any, is moot.
+      try { sessionStorage.removeItem(SELF_HEAL_KEY); } catch { /* ignore */ }
+      expireNotified = false;
     } else {
       localStorage.removeItem(TOKEN_KEY);
     }
@@ -19,20 +28,89 @@ export function setAuthToken(token: string | null) {
 }
 
 export function getAuthToken(): string | null {
-  if (authToken) return authToken;
+  // Storage is the source of truth: it is correct across tabs and across a
+  // re-login that happened after this module was evaluated.
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    const stored = localStorage.getItem(TOKEN_KEY);
+    if (stored) return stored;
   } catch {
-    return null;
+    // localStorage unavailable
+  }
+  return authToken;
+}
+
+// Fired when the backend confirms the stored token is no longer accepted
+// (expired session, backend restarted, database reset). The app listens for
+// this to sign the user out instead of failing every subsequent request.
+export const SESSION_EXPIRED_EVENT = 'printpress:session-expired';
+
+// Fired after every successful write so open pages can pull fresh data instead
+// of showing state computed locally from a possibly stale snapshot.
+export const DATA_CHANGED_EVENT = 'printpress:data-changed';
+
+export interface DataChangedDetail {
+  method: string;
+  path: string;
+}
+
+// A 401 from these endpoints is the expected answer to a bad credential, not
+// evidence that an established session died.
+const AUTH_ENDPOINTS = /^\/auth\//;
+
+function hasCachedUser(): boolean {
+  try {
+    return !!localStorage.getItem(USER_KEY);
+  } catch {
+    return false;
   }
 }
 
-// Fired when the backend rejects the stored token (expired session, backend
-// restarted, database reset). The app listens for this to sign the user out
-// instead of silently failing every subsequent request.
-export const SESSION_EXPIRED_EVENT = 'printpress:session-expired';
+let sessionCheck: Promise<void> | null = null;
+
+/** Error carrying the HTTP status so callers can react to specific failures. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.path = path;
+  }
+}
+
+/**
+ * Turns a failed response into a short sentence a user can act on, instead of
+ * dumping `API POST /expenses failed (500): {"error":"..."}` into a toast.
+ */
+async function readErrorMessage(res: Response, method: string, path: string): Promise<string> {
+  let serverMessage = '';
+  try {
+    const text = await res.text();
+    if (text) {
+      try {
+        const parsed = JSON.parse(text);
+        serverMessage = typeof parsed?.error === 'string' ? parsed.error : '';
+      } catch {
+        serverMessage = '';
+      }
+    }
+  } catch {
+    serverMessage = '';
+  }
+
+  if (serverMessage) return serverMessage;
+  if (res.status === 403) return 'You do not have permission to do that';
+  if (res.status === 404) return `${method} ${path} was not found`;
+  if (res.status === 413) return 'That file is too large to upload';
+  if (res.status >= 500) return 'The server could not complete that request';
+  return `${method} ${path} failed (${res.status})`;
+}
 
 function notifySessionExpired(): void {
+  if (expireNotified) return;
+  expireNotified = true;
   try {
     localStorage.removeItem(TOKEN_KEY);
     authToken = null;
@@ -42,9 +120,64 @@ function notifySessionExpired(): void {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+function scheduleSelfHealReload(): void {
+  let alreadyTried = false;
+  try {
+    alreadyTried = sessionStorage.getItem(SELF_HEAL_KEY) === '1';
+  } catch {
+    /* sessionStorage unavailable */
+  }
+  if (alreadyTried) {
+    // Reloading did not repair it, so the cached session really is gone.
+    notifySessionExpired();
+    return;
+  }
+  try { sessionStorage.setItem(SELF_HEAL_KEY, '1'); } catch { /* ignore */ }
+  window.location.reload();
+}
+
+// A single 401 does not prove the session is dead: it can be one rejected
+// request while the credential is still perfectly valid. Ask the backend
+// before throwing the user out. The in-flight guard collapses the burst of
+// 401s that arrives when a session dies into one verification.
+function confirmSessionExpired(): Promise<void> {
+  if (sessionCheck) return sessionCheck;
+
+  sessionCheck = (async () => {
+    const token = getAuthToken();
+    if (!token) {
+      notifySessionExpired();
+      return;
+    }
+    try {
+      const res = await fetch(`${BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) notifySessionExpired();
+    } catch {
+      // Backend unreachable is not proof of an expired session — keep the
+      // token so the next attempt can succeed once the backend is back.
+    }
+  })().finally(() => {
+    sessionCheck = null;
+  });
+
+  return sessionCheck;
+}
+
+async function request<T>(path: string, options?: RequestInit, isReplay = false): Promise<T> {  const token = getAuthToken();
+
+  if (!token && !AUTH_ENDPOINTS.test(path)) {
+    // Sending this without a credential is guaranteed to come back as
+    // 401 "No token provided". If a user is still cached, the renderer state
+    // and storage have drifted apart, so re-read both instead.
+    if (hasCachedUser()) scheduleSelfHealReload();
+    // Deliberately neutral: the session listener redirects to the sign-in
+    // screen, so the page-level toast does not need to explain the logout.
+    throw new ApiError('Not signed in', 401, path);
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAuthToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -52,14 +185,32 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers,
     ...options,
   });
-  if (res.status === 401 && token) {
-    // The credential we sent no longer works; retrying with it is pointless.
-    notifySessionExpired();
+
+  if (res.status === 401 && token && !AUTH_ENDPOINTS.test(path)) {
+    if (!isReplay && getAuthToken() !== token) {
+      // The token was replaced while this request was in flight, so the 401
+      // describes a credential that is no longer in use. Replay it.
+      return request<T>(path, options, true);
+    }
+    await confirmSessionExpired();
   }
+
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`API ${options?.method ?? 'GET'} ${path} failed (${res.status}): ${text}`);
+    throw new ApiError(
+      await readErrorMessage(res, options?.method ?? 'GET', path),
+      res.status,
+      path
+    );
   }
+
+  if (options?.method && options.method !== 'GET') {
+    window.dispatchEvent(
+      new CustomEvent<DataChangedDetail>(DATA_CHANGED_EVENT, {
+        detail: { method: options.method, path },
+      })
+    );
+  }
+
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -68,6 +219,13 @@ const get  = <T>(path: string)                   => request<T>(path);
 const post = <T>(path: string, body: unknown)    => request<T>(path, { method: 'POST',   body: JSON.stringify(body) });
 const put  = <T>(path: string, body: unknown)    => request<T>(path, { method: 'PUT',    body: JSON.stringify(body) });
 const del  =    (path: string)                   => request<void>(path, { method: 'DELETE' });
+
+// For the two endpoints that cannot go through request() because they need a
+// non-JSON content type.
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export const api = {
   customers: {
@@ -129,30 +287,27 @@ export const api = {
       return settings as CompanySettings;
     },
     update: (s: CompanySettings) => put<CompanySettings>('/settings', s),
+    unlockSmtp: (token: string) =>
+      post<{ smtpUnlocked: boolean }>('/settings/smtp/unlock', { token }),
+    lockSmtp: () => post<{ smtpUnlocked: boolean }>('/settings/smtp/lock', {}),
     testEmail: (to: string) => post<{ message: string }>('/settings/test-email', { to }),
     exportData: () => get<any>('/settings/export'),
     importData: (data: any) => post<any>('/settings/import', data),
     downloadDbBackup: async () => {
       const res = await fetch(`${BASE}/settings/db-backup`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${getAuthToken() ?? ''}` },
+        headers: authHeaders(),
       });
-      if (!res.ok) throw new Error(`Database backup failed (${res.status})`);
+      if (!res.ok) throw new Error(await readErrorMessage(res, 'POST', '/settings/db-backup'));
       return res.blob();
     },
     restoreDb: async (file: Blob) => {
       const res = await fetch(`${BASE}/settings/db-restore`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${getAuthToken() ?? ''}`,
-          'Content-Type': 'application/octet-stream',
-        },
+        headers: { ...authHeaders(), 'Content-Type': 'application/octet-stream' },
         body: file,
       });
-      if (!res.ok) {
-        const text = await res.text().catch(() => res.statusText);
-        throw new Error(`Database restore failed (${res.status}): ${text}`);
-      }
+      if (!res.ok) throw new Error(await readErrorMessage(res, 'POST', '/settings/db-restore'));
       return res.json();
     },
   },
@@ -160,6 +315,7 @@ export const api = {
   auth: {
     login: (username: string, password: string) =>
       post<{ user: User; token: string }>('/auth/login', { username, password }),
+    me: () => get<{ user: User }>('/auth/me'),
     registerAdmin: (data: { companyName: string; fullName: string; email: string; password: string; confirmPassword: string }) =>
       post<{ message: string; email: string }>('/auth/register-admin', data),
     verifyOtp: (email: string, code: string) =>
@@ -172,6 +328,8 @@ export const api = {
       post<{ message: string }>('/auth/forgot-password', { email }),
     resetPassword: (data: { email: string; code: string; newPassword: string }) =>
       post<{ message: string }>('/auth/reset-password', data),
+    changePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
+      post<{ message: string }>('/auth/change-password', data),
   },
 
   staff: {

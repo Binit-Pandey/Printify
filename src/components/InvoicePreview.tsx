@@ -125,7 +125,16 @@ const InvoicePreview = ({ bill, settings, format = 'a4' }: InvoicePreviewProps) 
       {/* Company Header */}
       <div className="border-b-2 border-blue-600 pb-4 mb-6">
         <div className="flex justify-between items-start">
-          <div>
+          <div className="flex gap-4 items-start">
+            {settings.logo && (
+              <img
+                src={settings.logo}
+                alt={`${settings.name || 'Company'} logo`}
+                className="w-20 h-20 object-contain flex-shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
+            <div>
             <h1 className="text-2xl font-black tracking-tight text-blue-600 uppercase">{settings.name || 'Company Name'}</h1>
             <p className="text-xs text-gray-500 mt-1 max-w-xs">{settings.address || 'Company Address'}</p>
             <div className="flex gap-4 mt-2 text-xs text-gray-500">
@@ -135,6 +144,7 @@ const InvoicePreview = ({ bill, settings, format = 'a4' }: InvoicePreviewProps) 
             <div className="flex gap-4 mt-1 text-xs text-gray-500">
               {settings.panNumber && <span className="font-semibold">PAN: {settings.panNumber}</span>}
               {settings.vatNumber && <span className="font-semibold">VAT: {settings.vatNumber}</span>}
+            </div>
             </div>
           </div>
           <div className="text-right">

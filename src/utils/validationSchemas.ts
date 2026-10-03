@@ -19,7 +19,10 @@ export const inventorySchema = z.object({
 export const vendorSchema = z.object({
   name: z.string().min(2, 'Vendor name must be at least 2 characters').max(100, 'Vendor name must be less than 100 characters'),
   phone: z.string().min(7, 'Phone must be at least 7 characters').max(20, 'Phone must be less than 20 characters'),
-  address: z.string().min(5, 'Address must be at least 5 characters').max(200, 'Address must be less than 200 characters'),
+  // Address is optional in the vendor form (the field is not marked required),
+  // so it must not be rejected here — otherwise saving fails with an error the
+  // user was never warned about.
+  address: z.string().max(200, 'Address must be less than 200 characters').optional().or(z.literal('')),
   panNumber: z.string().max(20, 'PAN number must be less than 20 characters').optional().or(z.literal('')),
 });
 

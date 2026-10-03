@@ -4,6 +4,8 @@ import { useStore } from '../contexts/store';
 import { useAuth } from '../contexts/AuthContext';
 import type { BillItem, Bill } from '../types';
 import ConfirmModal from './ConfirmModal';
+import { newId } from '../utils/id';
+import { localDateKey } from '../utils/date';
 
 interface BillFormProps {
   initialBill?: Bill;
@@ -22,7 +24,7 @@ const BillForm = ({ initialBill, submitLabel, onSubmit, onChange, onSaved, onErr
   const [custPhone, setCustPhone] = useState(initialBill?.customer?.phone ?? '');
   const [custAddress, setCustAddress] = useState(initialBill?.customer?.address ?? '');
   const [custEmail, setCustEmail] = useState(initialBill?.customer?.email ?? '');
-  const [billDate, setBillDate] = useState(initialBill?.date ?? new Date().toISOString().split('T')[0]);
+  const [billDate, setBillDate] = useState(initialBill?.date ?? localDateKey());
   const [items, setItems] = useState<BillItem[]>(initialBill?.items ?? []);
   const [discount, setDiscount] = useState(initialBill?.discount ?? 0);
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>(initialBill?.discountType ?? 'percentage');
@@ -59,7 +61,7 @@ const BillForm = ({ initialBill, submitLabel, onSubmit, onChange, onSaved, onErr
   const customerValid = custName.trim() !== '' && (!phoneRequired || custPhone.trim() !== '');
 
   const computedBill: Bill = useMemo(() => ({
-    id: initialBill?.id ?? crypto.randomUUID(),
+    id: initialBill?.id ?? newId(),
     billNumber,
     date: billDate,
     customer: {
@@ -90,7 +92,7 @@ const BillForm = ({ initialBill, submitLabel, onSubmit, onChange, onSaved, onErr
   }, [computedBill]);
 
   const addItem = useCallback((item: Omit<BillItem, 'id'>) => {
-    setItems(prev => [...prev, { ...item, id: crypto.randomUUID() }]);
+    setItems(prev => [...prev, { ...item, id: newId() }]);
   }, []);
 
   const removeItem = useCallback((id: string) => {
