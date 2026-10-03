@@ -310,7 +310,7 @@ function seedIfEmpty(database: Database.Database) {
 
     insertVendor.run({ id: 'v1', name: 'Paper Mart', phone: '9851234567', address: 'Biratnagar', panNumber: 'PAN123456', outstandingBalance: 15000 });
 
-    insertExpense.run({ id: 'e1', category: 'Rent', amount: 25000, reason: 'Monthly office rent', date: '2026-07-01', addedBy: 'Admin' });
+
 
     // Seed demo bills (customer JSON is embedded — no FK to customers table)
     insertBill.run({
@@ -391,21 +391,74 @@ export function closeDatabase(): void {
   currentDb = null as unknown as Database.Database;
 }
 
+// A 16-byte SQLite header is necessary but nowhere near sufficient: a truncated
+// download, a foreign `.db`, or a file from another application all pass that
+// check. Opening the candidate and confirming one of our own tables exists is
+// what actually proves the file is a PrintPress database.
+function looksLikeAppDatabase(filePath: string): boolean {
+  let probe: Database.Database | undefined;
+  try {
+    probe = new Database(filePath, { readonly: true });
+    const row = probe
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'settings'")
+      .get() as { name: string } | undefined;
+    return row?.name === 'settings';
+  } catch {
+    return false;
+  } finally {
+    try { probe?.close(); } catch { /* ignore */ }
+  }
+}
+
 // Replaces the live database file with the given Buffer (must be a valid SQLite
 // file). Closes the old handle first and re-opens the new file so the running
 // process keeps working without a restart.
+//
+// Restore is destructive, so the current database is copied to a timestamped
+// `printing.db.pre-restore-<ts>.db` sibling before anything is overwritten. If
+// the candidate then fails to validate or fails to reopen, that copy is put
+// back so a failed restore can never leave the user without a database. The
+// safety copy is kept on success too, so an unwanted restore is still
+// recoverable without hunting for an external backup.
 export function replaceDatabase(buffer: Buffer): void {
   if (buffer.length < 16 || buffer.subarray(0, 16).toString('utf8') !== 'SQLite format 3\0') {
     throw new Error('Not a valid SQLite database file');
   }
+
   const tmp = join(tmpdir(), `printpress-restore-${Date.now()}.db`);
+  const safety = `${DB_PATH}.pre-restore-${Date.now()}`;
+
+  // Checkpoint so the safety copy is a complete, self-contained database.
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch { /* best effort */ }
+  copyFileSync(DB_PATH, safety);
+
   closeDatabase();
   try {
     writeFileSync(tmp, buffer);
+    if (!looksLikeAppDatabase(tmp)) {
+      throw new Error(
+        'That file is not a PrintPress ERP backup — it is missing the expected app tables.',
+      );
+    }
     copyFileSync(tmp, DB_PATH);
     rmSync(`${DB_PATH}-wal`, { force: true });
     rmSync(`${DB_PATH}-shm`, { force: true });
     initDatabase();
+    console.log(`✅ Database restored. Previous data saved to ${safety}`);
+  } catch (err) {
+    // Put the original back: the live file may already have been overwritten.
+    try {
+      copyFileSync(safety, DB_PATH);
+      rmSync(`${DB_PATH}-wal`, { force: true });
+      rmSync(`${DB_PATH}-shm`, { force: true });
+      initDatabase();
+      console.error('⚠️ Restore failed — original database restored from safety copy.');
+    } catch (rollbackErr) {
+      console.error(
+        `❌ Restore failed AND the original database could not be reinstated: ${String(rollbackErr)}`,
+      );
+    }
+    throw err;
   } finally {
     try { rmSync(tmp, { force: true }); } catch { /* ignore */ }
   }

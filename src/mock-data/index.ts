@@ -77,16 +77,7 @@ export const mockVendors: Vendor[] = [
   },
 ];
 
-export const mockExpenses: Expense[] = [
-  {
-    id: 'e1',
-    category: 'Rent',
-    amount: 25000,
-    reason: 'Monthly office rent',
-    date: '2026-07-01',
-    addedBy: 'Admin',
-  },
-];
+export const mockExpenses: Expense[] = [];
 
 export const mockBills: Bill[] = [
   {
